@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Duel Simulator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section id="screen-home" class="screen">
+    <h1>⚔️ Duel Simulator</h1>
+    <p class="sub">Bare-bones deterministic PvP. Build a deck, duel your brother.</p>
+    <div class="panel">
+      <label>Your name <input id="name" maxlength="24" placeholder="Player 1"></label>
+      <div class="row">
+        <button id="btn-create" class="primary">Create room</button>
+      </div>
+      <div class="row">
+        <input id="join-code" maxlength="4" placeholder="CODE" class="code">
+        <button id="btn-join">Join room</button>
+      </div>
+      <div class="row">
+        <button id="btn-library">📖 Card library</button>
+      </div>
+      <div id="rejoin-wrap" class="hidden">
+        <button id="btn-rejoin" class="ghost">↩ Rejoin last room</button>
+      </div>
+      <p id="conn-status" class="muted"></p>
+    </div>
+  </section>
+
+  <!-- ============ LIBRARY ============ -->
+  <section id="screen-library" class="screen hidden">
+    <div class="topbar"><button class="ghost" data-nav="home">← Back</button><h2>Card library</h2></div>
+    <div class="panel">
+      <h3>Base stats</h3>
+      <ul id="rules-list" class="rules"></ul>
+    </div>
+    <div id="lib-grid" class="card-grid"></div>
+  </section>
+
+  <!-- ============ LOBBY ============ -->
+  <section id="screen-lobby" class="screen hidden">
+    <h2>Room <span id="lobby-code" class="code-big"></span></h2>
+    <p class="sub">Send this code to your brother.</p>
+    <div class="panel">
+      <div id="lobby-players"></div>
+      <p id="lobby-wait" class="muted">Waiting for opponent…</p>
+      <button id="btn-start-build" class="primary hidden">Start building ⚒️</button>
+      <div><button class="ghost" data-nav="home">Leave</button></div>
+    </div>
+  </section>
+
+  <!-- ============ BUILD ============ -->
+  <section id="screen-build" class="screen hidden">
+    <div class="topbar"><h2>Build your deck</h2><span id="deck-count" class="pill">0 / 40</span></div>
+    <p class="sub">Click a card to add it (max 4 copies). The <b>first 7</b> cards are your starting hand.</p>
+    <h3>Card pool</h3>
+    <div id="pool" class="card-grid small"></div>
+    <h3>Your deck <span class="muted">(drag order with ↑ ↓)</span></h3>
+    <ol id="deck-list" class="deck-list"></ol>
+    <div class="row sticky-bar">
+      <button id="btn-save-deck" class="primary" disabled>Save deck</button>
+      <span id="deck-error" class="error"></span>
+    </div>
+
+    <div id="ready-panel" class="panel hidden">
+      <h3>Ready up</h3>
+      <div id="opp-status" class="muted"></div>
+      <div id="settings-row" class="hidden">
+        <label>Match timer
+          <select id="match-minutes">
+            <option value="10">10 min</option>
+            <option value="15" selected>15 min</option>
+            <option value="20">20 min</option>
+            <option value="30">30 min</option>
+            <option value="0">No limit</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <span>Go:</span>
+        <button id="pick-first" class="toggle">1st</button>
+        <button id="pick-second" class="toggle">2nd</button>
+      </div>
+      <p class="muted tiny">If you both pick the same, the order is random.</p>
+      <button id="btn-ready" class="primary">Ready ✓</button>
+    </div>
+  </section>
+
+  <!-- ============ DUEL ============ -->
+  <section id="screen-duel" class="screen hidden">
+    <div class="duel-row">
+      <div class="char">
+        <div class="char-name" id="foe-name">Foe</div>
+        <div class="orb foe-orb" id="foe-orb">
+          <svg viewBox="0 0 120 120" class="orb-ring">
+            <circle cx="60" cy="60" r="52" class="ring-bg"></circle>
+            <circle cx="60" cy="60" r="52" class="ring-fg" id="foe-ring"></circle>
+          </svg>
+          <div class="hp-num" id="foe-hpnum"></div>
+          <div class="orb-icon tl hidden" id="foe-weak"></div>
+          <div class="orb-icon tr hidden" id="foe-blades"></div>
+          <div class="orb-icon bl hidden" id="foe-traps"></div>
+          <div class="orb-icon br hidden" id="foe-shields"></div>
+        </div>
+        <div class="char-sub"><span id="foe-hand"></span> · <span id="foe-deck"></span></div>
+        <div class="chips" id="foe-status"></div>
+      </div>
+      <div class="duel-side">
+        <div id="foe-pips" class="pips"></div>
+        <div id="turn-banner"></div>
+        <div id="timers"><span id="turn-timer"></span><span id="match-timer"></span></div>
+        <div id="fx-center"></div>
+      </div>
+    </div>
+    <div id="log"></div>
+    <div id="bubble-line"></div>
+    <div id="hand"></div>
+    <div class="duel-row">
+      <div class="char">
+        <div class="char-name" id="you-name">You</div>
+        <div class="orb you-orb" id="you-orb">
+          <svg viewBox="0 0 120 120" class="orb-ring">
+            <circle cx="60" cy="60" r="52" class="ring-bg"></circle>
+            <circle cx="60" cy="60" r="52" class="ring-fg" id="you-ring"></circle>
+          </svg>
+          <div class="hp-num" id="you-hpnum"></div>
+          <div class="orb-icon tl hidden" id="you-weak"></div>
+          <div class="orb-icon tr hidden" id="you-blades"></div>
+          <div class="orb-icon bl hidden" id="you-traps"></div>
+          <div class="orb-icon br hidden" id="you-shields"></div>
+        </div>
+        <div class="char-sub"><span id="you-deck"></span> · <span id="deck-next"></span></div>
+        <div class="chips" id="you-status"></div>
+      </div>
+      <div class="duel-side">
+        <div class="row" id="duel-actions">
+          <button id="btn-pass">Pass</button>
+          <button id="btn-redraw-mode">Redraw…</button>
+          <button id="btn-redraw-go" class="primary hidden">Discard &amp; draw</button>
+          <button id="btn-redraw-cancel" class="ghost hidden">Cancel</button>
+        </div>
+        <div id="you-pips" class="pips-big"></div>
+      </div>
+    </div>
+    <div id="gone-banner" class="banner hidden">Opponent disconnected — waiting for them to rejoin…</div>
+  </section>
+
+  <!-- ============ GAME OVER ============ -->
+  <section id="screen-over" class="screen hidden">
+    <h1 id="over-title"></h1>
+    <p id="over-sub" class="sub"></p>
+    <div class="row">
+      <button id="btn-rematch" class="primary">Rematch</button>
+      <button class="ghost" data-nav="home">Leave</button>
+    </div>
+  </section>
+
+</div>
+<div id="toast" class="hidden"></div>
+<button id="key-tab" title="Open the answer key">📖<span>KEY</span></button>
+<aside id="key-drawer" aria-label="Answer key">
+  <div class="key-head"><h3>Answer Key</h3><button id="key-close" class="ghost">✕</button></div>
+  <div id="key-entries"></div>
+</aside>
+<script type="module" src="app.js"></script>
+</body>
+</html>

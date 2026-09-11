@@ -1,0 +1,20 @@
+# DigitalOcean App Platform spec.
+# 1. Push this repo to GitHub.
+# 2. In DigitalOcean: Create -> Apps -> GitHub -> pick this repo.
+#    App Platform will detect this file and configure the service.
+# 3. IMPORTANT: edit `repo:` below to your GitHub username/repo before pushing,
+#    or just configure the source repo in the DO dashboard UI instead.
+
+name: duel-simulator
+services:
+- name: game
+  github:
+    repo: YOUR_GITHUB_USERNAME/duel-simulator
+    branch: main
+    deploy_on_push: true
+  dockerfile_path: Dockerfile
+  http_port: 8080
+  instance_size_slug: basic-xxs
+  instance_count: 1
+  routes:
+  - path: /

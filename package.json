@@ -1,0 +1,1 @@
+{"dependencies":{"ws":"^8.18.0"},"description":"Bare-bones deterministic PvP duel card game (Wizard101-inspired, no schools).","engines":{"node":">=20"},"name":"duel-simulator","scripts":{"start":"node server/index.js"},"type":"module","version":"1.0.0"}

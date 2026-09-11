@@ -1,0 +1,468 @@
+// Duel Simulator client. Talks to the server over WebSocket; the server is authoritative.
+import { CARDS, CARD_IDS, RULES, RULES_SUMMARY, GLOSSARY, validateDeck } from '../shared/cards.js';
+
+const $ = (id) => document.getElementById(id);
+const SCREENS = ['screen-home', 'screen-library', 'screen-lobby', 'screen-build', 'screen-duel', 'screen-over'];
+function show(id) { SCREENS.forEach(s => $(s).classList.toggle('hidden', s !== id)); window.scrollTo(0, 0); }
+let toastT = null;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+
+/* ================= FX — simple animations. Extend here for fancier ones. ================= */
+const FX = {
+  float(panelEl, text, cls) {
+    const f = document.createElement('div');
+    f.className = 'float ' + cls; f.textContent = text;
+    f.style.left = (20 + Math.random() * 60) + '%'; f.style.top = '30%';
+    panelEl.style.position = 'relative'; panelEl.appendChild(f);
+    setTimeout(() => f.remove(), 1500);
+  },
+  flash(text) {
+    const c = $('fx-center'); c.innerHTML = '';
+    const d = document.createElement('div'); d.className = 'fx-flash'; d.textContent = text;
+    c.appendChild(d); setTimeout(() => d.remove(), 1300);
+  },
+  shake(el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); },
+  log(html) {
+    const l = $('log'); const d = document.createElement('div'); d.innerHTML = html;
+    l.appendChild(d); l.scrollTop = l.scrollHeight;
+    while (l.children.length > 120) l.firstChild.remove();
+  },
+  clear() { $('log').innerHTML = ''; $('fx-center').innerHTML = ''; },
+};
+
+/* ================= state ================= */
+let ws = null, roomSeat = -1, myToken = null, roomCode = null;
+let myName = 'Player 1', lobby = null, snap = null;
+let deck = [], orderPick = 'first', deckSaved = false;
+let redrawMode = false; const redrawSel = new Set();
+let reconnectTries = 0;
+
+/* ================= websocket ================= */
+function wsUrl() { return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host; }
+
+function connect() {
+  return new Promise((resolve, reject) => {
+    $('conn-status').textContent = 'Connecting…';
+    const s = new WebSocket(wsUrl());
+    s.onopen = () => { ws = s; reconnectTries = 0; $('conn-status').textContent = ''; resolve(); };
+    s.onerror = () => { $('conn-status').textContent = 'Connection failed.'; reject(new Error('ws')); };
+    s.onclose = onWsClose;
+    s.onmessage = onMsg;
+  });
+}
+function ensureWs() {
+  if (ws && ws.readyState === 1) return Promise.resolve();
+  return connect();
+}
+function send(m) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(m));
+  else toast('Not connected.');
+}
+function onWsClose() {
+  ws = null;
+  // auto-rejoin while in a room (server keeps it ~2 min)
+  if (roomCode && myToken && reconnectTries < 8) {
+    reconnectTries++;
+    setTimeout(() => {
+      connect().then(() => send({ t: 'join', code: roomCode, token: myToken, name: myName }))
+        .catch(() => {});
+    }, 2000);
+  }
+}
+
+function onMsg(ev) {
+  let m; try { m = JSON.parse(ev.data); } catch { return; }
+  if (m.t === 'room') {
+    roomSeat = m.seat; myToken = m.token; roomCode = m.code;
+    localStorage.setItem('duelSession', JSON.stringify({ code: m.code, token: m.token, name: myName }));
+    $('lobby-code').textContent = m.code;
+    show('screen-lobby');
+  } else if (m.t === 'lobby') {
+    const wasLobby = !$('screen-lobby').classList.contains('hidden');
+    lobby = m; renderLobby();
+    if (m.phase === 'build' && wasLobby) enterBuild();
+  } else if (m.t === 'state') {
+    snap = m.snap;
+    if ($('screen-duel').classList.contains('hidden')) { FX.clear(); show('screen-duel'); }
+    renderDuel(m.events || []);
+    renderTimers(m.turnEndsAt, m.matchEndsAt);
+  } else if (m.t === 'over') {
+    showOver(m);
+  } else if (m.t === 'error') {
+    toast(m.msg);
+  } else if (m.t === 'opponentGone') {
+    $('gone-banner').classList.remove('hidden');
+  } else if (m.t === 'peerBack') {
+    $('gone-banner').classList.add('hidden'); toast('Opponent reconnected.');
+  }
+}
+
+/* ================= home / library ================= */
+function cardEl(id, extra = '') {
+  const c = CARDS[id];
+  const el = document.createElement('div');
+  el.className = 'card ' + extra;
+  el.innerHTML = `<div class="cost ${c.cost === 0 ? 'zero' : ''}">${c.cost}</div>` +
+    `<div class="cname">${c.name}</div><div class="ctext">${kw(c.text)}</div>`;
+  // Keyword taps open the answer key instead of playing the card.
+  el.querySelectorAll('.kw').forEach(b => b.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    openKey(b.dataset.kw);
+  }));
+  return el;
+}
+
+/* ================= answer key ================= */
+const escHtml = (s) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const KW_RE = /\b(blade|weakness|shield|trap|pierce|aura|brace|pips|DoT|HoT|bubble)\b/g;
+function kw(text) {
+  return escHtml(text).replace(KW_RE, '<button class="kw" data-kw="$1">$1</button>');
+}
+let keyBuilt = false;
+function buildKey() {
+  if (keyBuilt) return; keyBuilt = true;
+  const d = $('key-entries'); d.innerHTML = '';
+  for (const k of Object.keys(GLOSSARY)) {
+    const g = GLOSSARY[k];
+    const div = document.createElement('div');
+    div.className = 'key-entry'; div.id = 'key-' + k;
+    div.innerHTML = `<h4>${escHtml(g.name)}</h4><p>${escHtml(g.text)}</p>`;
+    d.appendChild(div);
+  }
+}
+function openKey(k) {
+  buildKey();
+  $('key-drawer').classList.add('open');
+  document.querySelectorAll('.key-entry.hl').forEach(e => e.classList.remove('hl'));
+  const e = $('key-' + k);
+  if (e) { e.classList.add('hl'); e.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+}
+$('key-tab').addEventListener('click', () => { buildKey(); $('key-drawer').classList.toggle('open'); });
+$('key-close').addEventListener('click', () => $('key-drawer').classList.remove('open'));
+
+function renderLibrary() {
+  $('rules-list').innerHTML = RULES_SUMMARY.map(r => `<li>${r}</li>`).join('');
+  const g = $('lib-grid'); g.innerHTML = '';
+  for (const id of CARD_IDS) g.appendChild(cardEl(id));
+}
+
+document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => {
+  if (ws) { try { ws.close(); } catch {} ws = null; }
+  roomCode = null; myToken = null; roomSeat = -1; lobby = null; snap = null;
+  show('screen-home');
+}));
+
+$('btn-library').addEventListener('click', () => { renderLibrary(); show('screen-library'); });
+$('btn-create').addEventListener('click', async () => {
+  myName = $('name').value.trim() || 'Player 1';
+  try { await ensureWs(); send({ t: 'create', name: myName }); }
+  catch { toast('Could not connect to the server.'); }
+});
+$('btn-join').addEventListener('click', async () => {
+  myName = $('name').value.trim() || 'Player 1';
+  const code = $('join-code').value.trim().toUpperCase();
+  if (!code) { toast('Enter a room code.'); return; }
+  try { await ensureWs(); send({ t: 'join', code, name: myName }); }
+  catch { toast('Could not connect to the server.'); }
+});
+(function checkRejoin() {
+  try {
+    const s = JSON.parse(localStorage.getItem('duelSession') || 'null');
+    if (s && s.code && s.token) {
+      $('rejoin-wrap').classList.remove('hidden');
+      $('btn-rejoin').addEventListener('click', async () => {
+        myName = s.name || $('name').value.trim() || 'Player 1';
+        try { await ensureWs(); send({ t: 'join', code: s.code, token: s.token, name: myName }); }
+        catch { toast('Could not connect.'); }
+      });
+    }
+  } catch {}
+})();
+
+/* ================= lobby ================= */
+function renderLobby() {
+  if (!lobby) return;
+  const names = lobby.names;
+  $('lobby-players').innerHTML =
+    `<div>${names[0] || '?'} ${roomSeat === 0 ? '(you)' : ''}</div>` +
+    `<div>${names[1] ? names[1] + (roomSeat === 1 ? ' (you)' : '') : '<span class="muted">waiting…</span>'}</div>`;
+  const both = names[0] && names[1];
+  $('lobby-wait').classList.toggle('hidden', !!both);
+  $('btn-start-build').classList.toggle('hidden', !both);
+  // build-screen side updates
+  if (both && lobby.phase === 'build') {
+    const foe = 1 - roomSeat;
+    $('opp-status').innerHTML =
+      `Opponent: ${lobby.hasDeck[foe] ? 'deck saved ✓' : 'building…'} · ${lobby.ready[foe] ? '<b>READY ✓</b>' : 'not ready'}`;
+    if (lobby.ready[roomSeat]) { $('btn-ready').textContent = 'Unready'; }
+    else { $('btn-ready').textContent = 'Ready ✓'; }
+  }
+}
+$('btn-start-build').addEventListener('click', () => { send({ t: 'start_build' }); });
+
+function enterBuild() {
+  deck = []; deckSaved = false; renderPool(); renderDeck();
+  $('ready-panel').classList.add('hidden');
+  $('settings-row').classList.toggle('hidden', roomSeat !== 0);
+  show('screen-build');
+}
+
+/* ================= deck builder ================= */
+function deckCount(id) { return deck.filter(x => x === id).length; }
+
+function renderPool() {
+  const pool = $('pool'); pool.innerHTML = '';
+  for (const id of CARD_IDS) {
+    const n = deckCount(id);
+    const el = cardEl(id, n >= RULES.copiesMax ? 'maxed' : '');
+    const badge = document.createElement('div'); badge.className = 'count'; badge.textContent = n ? `×${n}` : '';
+    el.appendChild(badge);
+    el.title = 'Click to add to deck';
+    el.addEventListener('click', () => {
+      if (deckSaved) return;
+      if (deckCount(id) >= RULES.copiesMax) { toast(`Max ${RULES.copiesMax} copies of ${CARDS[id].name}.`); return; }
+      if (deck.length >= RULES.deckMax) { toast(`Deck is full (${RULES.deckMax}).`); return; }
+      deck.push(id); renderPool(); renderDeck();
+    });
+    pool.appendChild(el);
+  }
+}
+
+function renderDeck() {
+  const list = $('deck-list'); list.innerHTML = '';
+  deck.forEach((id, i) => {
+    const li = document.createElement('li');
+    if (i < RULES.handStart) li.classList.add('starting');
+    li.innerHTML = `<span class="n">${i + 1}</span><span class="grow"><b>${CARDS[id].name}</b> <span class="muted">(${CARDS[id].cost} pip)</span></span>`;
+    const up = document.createElement('button'); up.textContent = '↑'; up.title = 'Move up';
+    const dn = document.createElement('button'); dn.textContent = '↓'; dn.title = 'Move down';
+    const rm = document.createElement('button'); rm.textContent = '✕'; rm.title = 'Remove';
+    up.addEventListener('click', () => { if (i > 0) { [deck[i - 1], deck[i]] = [deck[i], deck[i - 1]]; renderPool(); renderDeck(); } });
+    dn.addEventListener('click', () => { if (i < deck.length - 1) { [deck[i + 1], deck[i]] = [deck[i], deck[i + 1]]; renderPool(); renderDeck(); } });
+    rm.addEventListener('click', () => { deck.splice(i, 1); renderPool(); renderDeck(); });
+    if (deckSaved) [up, dn, rm].forEach(b => b.disabled = true);
+    li.append(up, dn, rm); list.appendChild(li);
+  });
+  $('deck-count').textContent = `${deck.length} / ${RULES.deckMin} min`;
+  const err = validateDeck(deck);
+  $('deck-error').textContent = deckSaved ? '' : (err || '');
+  $('btn-save-deck').disabled = deckSaved || !!err;
+  $('btn-save-deck').textContent = deckSaved ? 'Deck saved ✓' : 'Save deck';
+}
+
+$('btn-save-deck').addEventListener('click', () => {
+  send({ t: 'deck', cards: deck });
+  deckSaved = true; renderDeck();
+  $('ready-panel').classList.remove('hidden');
+  renderLobby();
+});
+$('match-minutes').addEventListener('change', (e) => send({ t: 'settings', minutes: Number(e.target.value) }));
+$('pick-first').addEventListener('click', () => setOrder('first'));
+$('pick-second').addEventListener('click', () => setOrder('second'));
+function setOrder(o) {
+  orderPick = o;
+  $('pick-first').classList.toggle('on', o === 'first');
+  $('pick-second').classList.toggle('on', o === 'second');
+}
+setOrder('first');
+$('btn-ready').addEventListener('click', () => {
+  if (!lobby) return;
+  if (lobby.ready[roomSeat]) send({ t: 'unready' });
+  else send({ t: 'ready', order: orderPick });
+});
+
+/* ================= duel ================= */
+const myMatchIdx = () => snap.seats.indexOf(roomSeat);
+const seatName = (mi) => mi === myMatchIdx() ? 'You' : (lobby.names[1 - roomSeat] || 'Foe');
+const isMyTurn = () => snap && snap.currentSeat === myMatchIdx();
+
+function chipsFor(p) {
+  const c = [];
+  if (p.pierceBlade) c.push(`<span class="chip b">➹ pierce+30</span>`);
+  if (p.outAura) c.push(`<span class="chip d">−${p.outAura.v}% out (${p.outAura.rounds})</span>`);
+  if (p.wAura) c.push(`<span class="chip d">−${p.wAura.v}% weak aura (${p.wAura.rounds})</span>`);
+  if (p.inAura && p.inAura.v < 0) c.push(`<span class="chip g">−${-p.inAura.v}% brace (${p.inAura.rounds})</span>`);
+  if (p.inAura && p.inAura.v > 0) c.push(`<span class="chip d">+${p.inAura.v}% exposed (${p.inAura.rounds})</span>`);
+  if (p.outBuff) c.push(`<span class="chip b">+${p.outBuff.v}% out (${p.outBuff.rounds})</span>`);
+  for (const d of p.dots) c.push(`<span class="chip d">🔥 ${d.tick}×${d.rounds}</span>`);
+  for (const h of p.hots) c.push(`<span class="chip g">💚 ${h.heal}×${h.rounds}</span>`);
+  return c.join('');
+}
+
+const RING_C = 2 * Math.PI * 52;
+
+function setOrbIcon(id, html, title) {
+  const el = $(id);
+  el.innerHTML = html || '';
+  el.title = title || '';
+  el.classList.toggle('hidden', !html);
+}
+
+// W101-style character orb: depleting HP ring, HP number in the middle,
+// blades top-right, weakness top-left, shields bottom-right, traps bottom-left.
+function renderOrb(prefix, p, name) {
+  $(prefix + '-name').textContent = name;
+  const frac = Math.max(0, Math.min(1, p.hp / RULES.maxHp));
+  $(prefix + '-ring').style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(1);
+  const hpEl = $(prefix + '-hpnum');
+  hpEl.textContent = p.hp.toLocaleString();
+  hpEl.title = `${p.hp.toLocaleString()} / ${RULES.maxHp.toLocaleString()} HP`;
+  setOrbIcon(prefix + '-blades',
+    p.blades.length ? `🗡️${p.blades.length > 1 ? '×' + p.blades.length : ''}` : '',
+    p.blades.length ? `Blades: ${p.blades.map(b => '+' + b + '%').join(', ')} — all consumed by the next damaging hit` : '');
+  setOrbIcon(prefix + '-weak',
+    p.weakness ? `💔−${p.weakness}%` : '',
+    p.weakness ? `Weakness: −${p.weakness}% on the next outgoing hit (cannot be pierced)` : '');
+  setOrbIcon(prefix + '-shields',
+    p.shields ? `🛡️${p.shields > 1 ? '×' + p.shields : ''}` : '',
+    p.shields ? `${p.shields} shield(s) — each damage instance uses up one` : '');
+  setOrbIcon(prefix + '-traps',
+    p.traps.length ? `🪤${p.traps.length > 1 ? '×' + p.traps.length : ''}` : '',
+    p.traps.length ? `Traps: ${p.traps.map(t => '+' + t + '%').join(', ')} — boost the next hit(s) taken` : '');
+  $(prefix + '-status').innerHTML = chipsFor(p);
+  $(prefix + '-pips').textContent = `⚡ ${p.pips}`;
+}
+
+function renderDuel(events) {
+  const foeName = lobby.names[1 - roomSeat] || 'Foe';
+  renderOrb('foe', snap.foe, foeName);
+  renderOrb('you', snap.you, myName + ' (you)');
+  $('foe-hand').textContent = `Hand: ${snap.foe.hand}`;
+  $('foe-deck').textContent = `Deck: ${snap.foe.deckCount}`;
+  $('you-deck').textContent = `Deck: ${snap.you.deckCount}`;
+  $('deck-next').textContent = snap.you.deckNext && snap.you.deckNext.length
+    ? 'Next: ' + CARDS[snap.you.deckNext[0]].name : 'Next: —';
+
+  // arena bubble indicator
+  const bl = $('bubble-line');
+  if (snap.bubble) {
+    const mine = snap.bubble.owner === 'you';
+    bl.innerHTML = `🫧 <b>Bubble</b>: +${RULES.bubblePct}% ${mine ? 'your' : "foe's"} spells`;
+    bl.classList.toggle('foe', !mine);
+  } else {
+    bl.innerHTML = `🫧 <b>Bubble</b>: <span class="muted">none — play Bubble to set it</span>`;
+    bl.classList.remove('foe');
+  }
+
+  const mine = isMyTurn();
+  $('turn-banner').textContent = snap.winner ? '' : (mine ? 'YOUR TURN' : "Opponent's turn");
+  $('turn-banner').className = mine ? 'you' : 'foe';
+
+  // hand
+  const hand = $('hand'); hand.innerHTML = '';
+  hand.classList.toggle('locked', !mine || snap.winner);
+  snap.you.hand.forEach((id, i) => {
+    const el = cardEl(id);
+    const afford = snap.you.pips >= CARDS[id].cost;
+    if (!afford && !redrawMode) el.classList.add('cant');
+    if (redrawMode && redrawSel.has(i)) el.classList.add('selected');
+    el.title = afford || redrawMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pips`;
+    el.addEventListener('click', () => {
+      if (!mine || snap.winner) return;
+      if (redrawMode) {
+        redrawSel.has(i) ? redrawSel.delete(i) : redrawSel.add(i);
+        renderDuel([]);
+      } else {
+        if (!afford) { toast('Not enough pips.'); return; }
+        send({ t: 'action', action: { type: 'play', hand: i } });
+      }
+    });
+    hand.appendChild(el);
+  });
+
+  $('btn-pass').disabled = !mine;
+  $('btn-redraw-mode').disabled = !mine;
+  $('btn-redraw-mode').classList.toggle('hidden', redrawMode);
+  $('btn-redraw-go').classList.toggle('hidden', !redrawMode);
+  $('btn-redraw-cancel').classList.toggle('hidden', !redrawMode);
+
+  for (const e of events) handleEvent(e);
+}
+
+function handleEvent(e) {
+  const panel = (mi) => $(mi === myMatchIdx() ? 'you-orb' : 'foe-orb');
+  switch (e.k) {
+    case 'start': {
+      const mi = snap.seats.indexOf(e.first);
+      FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> moves first.`);
+      break;
+    }
+    case 'turn': break; // banner covers it
+    case 'card': {
+      const nm = CARDS[e.card].name;
+      FX.flash(`${seatName(e.seat)}: ${nm}`);
+      FX.log(`${seatName(e.seat)} played <b>${nm}</b>.`);
+      break;
+    }
+    case 'dmg': {
+      const tgt = e.to === myMatchIdx() ? 'you' : 'foe';
+      FX.float(panel(e.to), `−${e.amount}`, 'dmg');
+      if (e.amount >= 800) FX.shake($(tgt === 'you' ? 'you-orb' : 'foe-orb'));
+      FX.log(`${seatName(e.from)} hit ${seatName(e.to)} for <b>${e.amount}</b>${e.dot ? ' (DoT tick)' : ''}${e.shieldUsed ? ' (shield used)' : ''}${e.trapUsed ? ' (trap used)' : ''}.`);
+      break;
+    }
+    case 'heal': FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.log(`${seatName(e.to)} healed ${e.amount}.`); break;
+    case 'pass': FX.log(`${seatName(e.seat)} passed.`); break;
+    case 'timeout': FX.log(`⏱ ${seatName(e.seat)} ran out of time — auto-pass.`); break;
+    case 'redraw': FX.log(`${seatName(e.seat)} redrew ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
+    case 'draw': break;
+    case 'blade': FX.log(`${seatName(e.to)} gained a +${e.v}% blade.`); break;
+    case 'weak': FX.log(`${seatName(e.to)} got −${e.v}% weakness.`); break;
+    case 'trap': FX.log(`${seatName(e.to)} got a +${e.v}% trap.`); break;
+    case 'shield': FX.log(`${seatName(e.to)} raised a −${e.v}% shield.`); break;
+    case 'pierceBlade': FX.log(`${seatName(e.to)} gained +30 pierce (next hit).`); break;
+    case 'outAura': FX.log(`${seatName(e.to)} got −${e.v}% outgoing aura.`); break;
+    case 'brace': FX.log(`${seatName(e.to)} gained −${e.v}% brace.`); break;
+    case 'expose': FX.log(`${seatName(e.to)} is exposed: +${e.v}% incoming damage aura.`); break;
+    case 'wAura': FX.log(`${seatName(e.to)} got a −${e.v}% weakness aura.`); break;
+    case 'bubble': FX.log(`${seatName(e.seat)} set the bubble (+${RULES.bubblePct}% their spells).`); break;
+    case 'outBuff': FX.log(`${seatName(e.to)} gained +${e.v}% outgoing aura.`); break;
+    case 'dot': FX.log(`${seatName(e.to)} is burning (${e.tick}/turn × ${e.rounds}).`); break;
+    case 'hot': FX.log(`${seatName(e.to)} is regenerating (${e.heal}/turn × ${e.rounds}).`); break;
+    case 'sacrifice': FX.float(panel(e.to), `−${e.hp}`, 'dmg'); FX.log(`${seatName(e.to)} sacrificed ${e.hp} HP for +${e.pips} pips.`); break;
+    case 'over': break; // handled by 'over' message
+  }
+}
+
+$('btn-pass').addEventListener('click', () => send({ t: 'action', action: { type: 'pass' } }));
+$('btn-redraw-mode').addEventListener('click', () => {
+  redrawMode = true; redrawSel.clear(); renderDuel([]);
+  toast('Select cards, then Discard & draw.');
+});
+$('btn-redraw-cancel').addEventListener('click', () => { redrawMode = false; redrawSel.clear(); renderDuel([]); });
+$('btn-redraw-go').addEventListener('click', () => {
+  if (!redrawSel.size) { toast('Select at least one card.'); return; }
+  send({ t: 'action', action: { type: 'redraw', hand: [...redrawSel] } });
+  redrawMode = false; redrawSel.clear();
+});
+
+/* ================= timers ================= */
+let timerEnds = { turn: null, match: null };
+function renderTimers(turnEndsAt, matchEndsAt) { timerEnds = { turn: turnEndsAt, match: matchEndsAt }; }
+setInterval(() => {
+  const fmt = (ms) => {
+    if (ms == null) return '—';
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  const now = Date.now();
+  $('turn-timer').textContent = '⏱ ' + fmt(timerEnds.turn ? timerEnds.turn - now : null);
+  $('match-timer').textContent = '⏳ ' + fmt(timerEnds.match ? timerEnds.match - now : null);
+}, 500);
+
+/* ================= game over ================= */
+function showOver(m) {
+  const t = m.winner === 'you' ? '🏆 You win!' : m.winner === 'foe' ? '💀 You lose' : '🤝 Draw';
+  $('over-title').textContent = t;
+  $('over-sub').textContent = m.reason === 'time' ? 'Time expired — higher HP wins.' : 'Knockout.';
+  show('screen-over');
+}
+$('btn-rematch').addEventListener('click', () => {
+  send({ t: 'rematch' });
+  enterBuild();
+});
+
+show('screen-home');
