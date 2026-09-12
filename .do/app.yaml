@@ -9,7 +9,7 @@ name: duel-simulator
 services:
 - name: game
   github:
-    repo: YOUR_GITHUB_USERNAME/duel-simulator
+    repo: jeremy-neale/criticality
     branch: main
     deploy_on_push: true
   dockerfile_path: Dockerfile
