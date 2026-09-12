@@ -106,7 +106,7 @@ function strike(state, ai, di, base, events) {
 }
 
 function checkDeath(state, events) {
-  if (state.winner) return;
+  if (state.winner !== null) return;
   const [a, b] = state.players;
   if (a.hp <= 0 && b.hp <= 0) { state.winner = 'draw'; }
   else if (a.hp <= 0) { state.winner = 1; }
@@ -169,7 +169,7 @@ function startTurn(state, events) {
 // Returns {events} or {error}.
 export function applyAction(state, si, action) {
   const events = [];
-  if (state.winner) return { error: 'Match is over.' };
+  if (state.winner !== null) return { error: 'Match is over.' };
   if (si !== state.current) return { error: 'Not your turn.' };
   const me = state.players[si], foe = state.players[1 - si];
 
@@ -276,7 +276,7 @@ export function applyAction(state, si, action) {
     return { error: 'Unknown action.' };
   }
 
-  if (!state.winner) {
+  if (state.winner === null) {
     state.current = 1 - state.current;
     state.turnNum++;
     startTurn(state, events);

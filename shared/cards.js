@@ -58,10 +58,10 @@ export const CARDS = {
              text: '1000 damage, +40% trap.' },
 
   // ---- damage over time ----
-  smolder: { name: 'Smolder', cost: 3, kind: 'dot', dmg: 120, tick: 90, ticks: 3,
-             text: '120 damage, then 90×3 DoT.' },
-  inferno: { name: 'Inferno', cost: 6, kind: 'dot', dmg: 240, tick: 160, ticks: 4,
-             text: '240 damage, then 160×4 DoT.' },
+  smolder: { name: 'Smolder', cost: 3, kind: 'dot', dmg: 120, tick: 70, ticks: 3,
+             text: '120 damage, then 70×3 DoT.' },
+  inferno: { name: 'Inferno', cost: 6, kind: 'dot', dmg: 240, tick: 110, ticks: 4,
+             text: '240 damage, then 110×4 DoT.' },
 
   // ---- healing over time ----
   mend:  { name: 'Mend',  cost: 2, kind: 'hot', tick: 120, ticks: 3,

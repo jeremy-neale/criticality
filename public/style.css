@@ -32,18 +32,29 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .card-grid.small { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
 .card { background: var(--card); border: 2px solid #453a7d; border-radius: 12px; padding: 8px;
-  position: relative; cursor: pointer; user-select: none; transition: transform .08s; }
+  position: relative; cursor: pointer; user-select: none; transition: transform .08s;
+  border-top: 3px solid #453a7d; }
 .card:hover { transform: translateY(-2px); }
 .card .cost { position: absolute; top: 6px; left: 8px; background: #4a8dff; color: #06122e;
-  font-weight: 800; border-radius: 50%; width: 26px; height: 26px; display: flex;
-  align-items: center; justify-content: center; font-size: 14px; }
+  font-weight: 900; border-radius: 50%; width: 30px; height: 30px; display: flex;
+  align-items: center; justify-content: center; font-size: 16px; }
 .card .cost.zero { background: #9aa3b2; }
-.card .cname { font-weight: 700; margin: 2px 0 4px 30px; font-size: 14px; }
-.card .ctext { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.card .cname { font-weight: 700; margin: 2px 0 4px 34px; font-size: 14px; }
+.card .ctext { font-size: 12px; color: #d9d2f7; line-height: 1.35; }
 .card .count { position: absolute; top: 6px; right: 8px; font-size: 12px; color: var(--acc2); font-weight: 700; }
+/* kind tags: color-coded border by card type (declared before .maxed/.selected so those states win) */
+.card.k-hit { border-color: #ff5d6c; border-top-color: #ff8a95; }
+.card.k-shield { border-color: #4a8dff; border-top-color: #7db4ff; }
+.card.k-heal { border-color: #57d977; border-top-color: #8ff0a8; }
+.card.k-buff { border-color: #ffb347; border-top-color: #ffcf7d; }
+.card.k-debuff { border-color: #b678ff; border-top-color: #d3a9ff; }
+.card.k-neutral { border-color: #453a7d; border-top-color: #6b5ba8; }
 .card.maxed { opacity: .45; }
 .card.selected { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad); }
 .card.cant { opacity: .45; }
+/* kind-tag label under the card name */
+.kind-tag { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  opacity: .85; margin: 2px 0 2px 34px; }
 
 /* deck list */
 .deck-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -100,6 +111,22 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
 .orb-icon.tr { top: -8px; right: -16px; border-color: var(--acc2); }
 .orb-icon.bl { bottom: -8px; left: -16px; border-color: var(--acc); }
 .orb-icon.br { bottom: -8px; right: -16px; border-color: var(--good); }
+/* orbiting DoT/HoT indicators around the orb */
+.orbiters { position: absolute; inset: 0; pointer-events: none; }
+.orbiter { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px;
+  margin: -15px 0 0 -15px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 11px; font-weight: 800; color: #fff;
+  text-shadow: 0 1px 3px #000; animation: orbit 6s linear infinite;
+  animation-delay: calc(var(--i, 0) * -1.2s); }
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(74px) rotate(0deg); }
+  to { transform: rotate(360deg) translateX(74px) rotate(-360deg); }
+}
+.orbiter.dot { background: radial-gradient(circle at 35% 35%, #ffb347, #ff5d3d 60%, #c22e1f);
+  box-shadow: 0 0 8px #ff7b3d; }
+.orbiter.hot { background: radial-gradient(circle at 35% 35%, #8ff0a8, #57d977 60%, #2a9d48);
+  box-shadow: 0 0 8px #57d977; }
+.orbiter.more { background: #3d3470; }
 .char-sub { font-size: 12px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
 .pips { color: #7db4ff; letter-spacing: 1px; font-size: 14px; font-weight: 700; }
 .pips-big { color: #7db4ff; font-size: 32px; font-weight: 800; letter-spacing: 1px; }
@@ -122,8 +149,9 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
 #hand .card { flex: 0 0 auto; width: 96px; margin-left: -22px; transform-origin: bottom center;
   transition: transform .15s ease; }
 #hand .card:first-child { margin-left: 0; }
-#hand .card .cname { font-size: 12px; margin: 2px 0 2px 28px; white-space: nowrap;
+#hand .card .cname { font-size: 12px; margin: 2px 0 2px 32px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
+#hand .card .kind-tag { margin: 2px 0 2px 32px; font-size: 9px; }
 #hand .card .ctext { display: none; }
 #hand .card:hover { transform: scale(1.9); z-index: 30; }
 #hand .card:hover .cname { white-space: normal; overflow: visible; }

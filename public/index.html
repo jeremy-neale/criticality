@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Duel Simulator</title>
+<base href="/">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -34,7 +35,7 @@
 
   <!-- ============ LIBRARY ============ -->
   <section id="screen-library" class="screen hidden">
-    <div class="topbar"><button class="ghost" data-nav="home">← Back</button><h2>Card library</h2></div>
+    <div class="topbar"><button class="ghost" id="lib-back">← Back</button><h2>Card library</h2></div>
     <div class="panel">
       <h3>Base stats</h3>
       <ul id="rules-list" class="rules"></ul>
@@ -58,6 +59,9 @@
   <section id="screen-build" class="screen hidden">
     <div class="topbar"><h2>Build your deck</h2><span id="deck-count" class="pill">0 / 40</span></div>
     <p class="sub">Click a card to add it (max 4 copies). The <b>first 7</b> cards are your starting hand.</p>
+    <h3>Presets</h3>
+    <p class="sub tiny">Start from a preset, then edit freely.</p>
+    <div class="row" id="preset-row"></div>
     <h3>Card pool</h3>
     <div id="pool" class="card-grid small"></div>
     <h3>Your deck <span class="muted">(drag order with ↑ ↓)</span></h3>
@@ -106,6 +110,7 @@
           <div class="orb-icon tr hidden" id="foe-blades"></div>
           <div class="orb-icon bl hidden" id="foe-traps"></div>
           <div class="orb-icon br hidden" id="foe-shields"></div>
+          <div class="orbiters" id="foe-orbiters"></div>
         </div>
         <div class="char-sub"><span id="foe-hand"></span> · <span id="foe-deck"></span></div>
         <div class="chips" id="foe-status"></div>
@@ -133,6 +138,7 @@
           <div class="orb-icon tr hidden" id="you-blades"></div>
           <div class="orb-icon bl hidden" id="you-traps"></div>
           <div class="orb-icon br hidden" id="you-shields"></div>
+          <div class="orbiters" id="you-orbiters"></div>
         </div>
         <div class="char-sub"><span id="you-deck"></span> · <span id="deck-next"></span></div>
         <div class="chips" id="you-status"></div>

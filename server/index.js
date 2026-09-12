@@ -28,6 +28,7 @@ const httpServer = http.createServer((req, res) => {
   try {
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/') p = '/index.html';
+    if (p === '/cards' || p === '/cards/') p = '/index.html';
     let file;
     if (p.startsWith('/shared/')) file = path.normalize(path.join(ROOT, p));
     else file = path.normalize(path.join(ROOT, 'public', p));
@@ -106,7 +107,7 @@ function clearTimers(room) {
 function armTurnTimer(room) {
   if (room.turnTimer) clearTimeout(room.turnTimer);
   room.turnTimer = setTimeout(() => {
-    if (!room.match || room.match.state.winner) return;
+    if (!room.match || room.match.state.winner !== null) return;
     const si = room.match.state.current;
     const { events, error } = applyAction(room.match.state, si, { type: 'pass' });
     if (!error) {
@@ -118,7 +119,7 @@ function armTurnTimer(room) {
 
 function afterAction(room, events) {
   const st = room.match.state;
-  if (st.winner) {
+  if (st.winner !== null) {
     clearTimers(room);
     broadcastState(room, events);
     room.players.forEach((p, i) => {
@@ -146,7 +147,7 @@ function startMatch(room) {
   armTurnTimer(room);
   if (room.matchEndsAt) {
     room.matchTimer = setTimeout(() => {
-      if (!room.match || room.match.state.winner) return;
+      if (!room.match || room.match.state.winner !== null) return;
       const st = room.match.state;
       const [a, b] = st.players.map(p => p.hp / RULES.maxHp);
       st.winner = a === b ? 'draw' : (a > b ? 0 : 1);

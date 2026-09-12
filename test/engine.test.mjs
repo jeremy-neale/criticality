@@ -99,23 +99,23 @@ describe('DoTs', () => {
     const { state } = createMatch([deckOf('smolder'), deckOf('weakness')], 1);
     playByName(state, 0, 'weakness'); // players[1] gets -25%
     playByName(state, 1, 'smolder');
-    // upfront 180 + first tick fires immediately (foe's turn starts next): 135
-    assert.equal(state.players[0].hp, 10000 - 180 - 135);
+    // upfront 180 + first tick fires immediately (foe's turn starts next): 105
+    assert.equal(state.players[0].hp, 10000 - 180 - 105);
     pass(state, 0);
     pass(state, 1); // second tick on players[0]'s next turn
-    assert.equal(state.players[0].hp, 10000 - 180 - 135 - 135);
+    assert.equal(state.players[0].hp, 10000 - 180 - 105 - 105);
   });
   it('ticks use shields when present, one per tick', () => {
     const { state } = createMatch([deckOf('smolder'), deckOf('shield')], 0);
-    playByName(state, 0, 'smolder'); // upfront 240 + immediate tick 180
-    assert.equal(state.players[1].hp, 10000 - 240 - 180);
+    playByName(state, 0, 'smolder'); // upfront 240 + immediate tick 140
+    assert.equal(state.players[1].hp, 10000 - 240 - 140);
     playByName(state, 1, 'shield');
-    pass(state, 0); // tick: 225*0.8*0.8=144, shield consumed
-    assert.equal(state.players[1].hp, 10000 - 240 - 180 - 144);
+    pass(state, 0); // tick: 175*0.8*0.8=112, shield consumed
+    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 112);
     assert.equal(state.players[1].shields.length, 0);
     pass(state, 1);
-    pass(state, 0); // next tick: 225*0.8=180, no shield
-    assert.equal(state.players[1].hp, 10000 - 240 - 180 - 144 - 180);
+    pass(state, 0); // next tick: 175*0.8=140, no shield
+    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 112 - 140);
   });
 });
 
@@ -195,11 +195,11 @@ describe('Traps', () => {
   it('each DoT tick uses up one trap', () => {
     const { state } = createMatch([deckOf('smolder', 'trap'), deckOf()], 0);
     playByName(state, 0, 'smolder'); // 240 upfront, dot on foe
-    pass(state, 1); // tick 180 (no trap yet)
-    assert.equal(state.players[1].hp, 10000 - 240 - 180);
+    pass(state, 1); // tick 140 (no trap yet)
+    assert.equal(state.players[1].hp, 10000 - 240 - 140);
     playByName(state, 0, 'trap'); // trap on foe
-    pass(state, 1); // tick 180 x 1.4 = 252, trap consumed
-    assert.equal(state.players[1].hp, 10000 - 240 - 180 - 252);
+    pass(state, 1); // tick 140 x 1.4 = 196, trap consumed
+    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 196);
     assert.deepEqual(state.players[1].traps, []);
   });
   it('ambush: 2000 upfront, trap lands for the next hit', () => {

@@ -1,5 +1,6 @@
 // Duel Simulator client. Talks to the server over WebSocket; the server is authoritative.
 import { CARDS, CARD_IDS, RULES, RULES_SUMMARY, GLOSSARY, validateDeck } from '../shared/cards.js';
+import { PRESETS } from '../shared/presets.js';
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['screen-home', 'screen-library', 'screen-lobby', 'screen-build', 'screen-duel', 'screen-over'];
@@ -100,13 +101,31 @@ function onMsg(ev) {
   }
 }
 
-/* ================= home / library ================= */
+/* ================= card element ================= */
+const KIND_STYLE = {
+  hit: { cls: 'k-hit', label: '⚔ Hit' },
+  dot: { cls: 'k-hit', label: '🔥 DoT' },
+  shield: { cls: 'k-shield', label: '🛡 Shield' },
+  hot: { cls: 'k-heal', label: '💚 Heal' },
+  blade: { cls: 'k-buff', label: '✨ Buff' },
+  pierce: { cls: 'k-buff', label: '✨ Buff' },
+  aura: { cls: 'k-buff', label: '✨ Buff' },
+  bubble: { cls: 'k-buff', label: '✨ Buff' },
+  weak: { cls: 'k-debuff', label: '💜 Debuff' },
+  trap: { cls: 'k-debuff', label: '💜 Debuff' },
+  expose: { cls: 'k-debuff', label: '💜 Debuff' },
+  waura: { cls: 'k-debuff', label: '💜 Debuff' },
+  sacrifice: { cls: 'k-neutral', label: '⚡ Pips' },
+};
+
 function cardEl(id, extra = '') {
   const c = CARDS[id];
+  const ks = KIND_STYLE[c.kind] || KIND_STYLE.sacrifice;
   const el = document.createElement('div');
-  el.className = 'card ' + extra;
+  el.className = 'card ' + ks.cls + ' ' + extra;
   el.innerHTML = `<div class="cost ${c.cost === 0 ? 'zero' : ''}">${c.cost}</div>` +
-    `<div class="cname">${c.name}</div><div class="ctext">${kw(c.text)}</div>`;
+    `<div class="cname">${c.name}</div><div class="kind-tag">${ks.label}</div>` +
+    `<div class="ctext">${kw(c.text)}</div>`;
   // Keyword taps open the answer key instead of playing the card.
   el.querySelectorAll('.kw').forEach(b => b.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -155,7 +174,8 @@ document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click',
   show('screen-home');
 }));
 
-$('btn-library').addEventListener('click', () => { renderLibrary(); show('screen-library'); });
+$('btn-library').addEventListener('click', () => { location.href = '/cards'; });
+$('lib-back').addEventListener('click', () => { location.href = '/'; });
 $('btn-create').addEventListener('click', async () => {
   myName = $('name').value.trim() || 'Player 1';
   try { await ensureWs(); send({ t: 'create', name: myName }); }
@@ -274,6 +294,23 @@ $('btn-ready').addEventListener('click', () => {
   else send({ t: 'ready', order: orderPick });
 });
 
+/* ================= deck presets ================= */
+(function buildPresets() {
+  const row = $('preset-row');
+  if (!row) return;
+  for (const preset of PRESETS) {
+    const b = document.createElement('button');
+    b.textContent = preset.name;
+    b.title = preset.desc || preset.name;
+    b.addEventListener('click', () => {
+      deck = [...preset.cards]; deckSaved = false;
+      renderPool(); renderDeck();
+      toast('Loaded ' + preset.name + ' — edit freely.');
+    });
+    row.appendChild(b);
+  }
+})();
+
 /* ================= duel ================= */
 const myMatchIdx = () => snap.seats.indexOf(roomSeat);
 const seatName = (mi) => mi === myMatchIdx() ? 'You' : (lobby.names[1 - roomSeat] || 'Foe');
@@ -324,6 +361,23 @@ function renderOrb(prefix, p, name) {
     p.traps.length ? `Traps: ${p.traps.map(t => '+' + t + '%').join(', ')} — boost the next hit(s) taken` : '');
   $(prefix + '-status').innerHTML = chipsFor(p);
   $(prefix + '-pips').textContent = `⚡ ${p.pips}`;
+  // orbiting DoT/HoT indicators: up to 4 each, extras collapse into a +N bubble
+  const orbEl = $(prefix + '-orbiters');
+  if (orbEl) {
+    let html = '', i = 0;
+    const add = (cls, nums) => {
+      const shown = nums.slice(0, 4);
+      const extraN = nums.length > 4 ? nums.length - 3 : 0;
+      if (extraN) { shown.length = 3; shown.push('+' + extraN); }
+      shown.forEach((n, j) => {
+        const more = j === 3 && extraN ? ' more' : '';
+        html += `<span class="orbiter ${cls}${more}" style="--i:${i++}"><span class="onum">${n}</span></span>`;
+      });
+    };
+    add('dot', (p.dots || []).map(d => d.tick));
+    add('hot', (p.hots || []).map(h => h.heal));
+    orbEl.innerHTML = html;
+  }
 }
 
 function renderDuel(events) {
@@ -465,4 +519,6 @@ $('btn-rematch').addEventListener('click', () => {
   enterBuild();
 });
 
-show('screen-home');
+// /cards deep link: boot straight into the card library
+if (location.pathname.startsWith('/cards')) { renderLibrary(); show('screen-library'); }
+else { show('screen-home'); }
