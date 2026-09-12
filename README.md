@@ -6,7 +6,7 @@ Deck building → ready up → live duel over WebSocket. One server, one link, t
 ## Play
 
 1. Open the link, enter your name, **Create room** — you get a 4-letter code.
-2. Send the code to your brother; he opens the link and **joins** with it.
+2. Send the code to your opponent; they open the link and **join** with it.
 3. Both build a deck (**40–100 cards**, max 4 copies each — the **first 7** are your starting hand, outlined in gold), save it, pick 1st/2nd, hit **Ready**.
 4. Duel! 30s per turn, configurable match timer (default 15 min).
 
@@ -62,7 +62,7 @@ WebSockets work out of the box.
 3. App Platform detects the `Dockerfile` automatically. Keep the suggested settings
    (service name `game`, the smallest `basic-xxs` instance is plenty).
 4. Create the app. You'll get a public URL like `https://duel-simulator-xxxxx.ondigitalocean.app`.
-5. Send that URL to your brother. Every push to `main` redeploys automatically.
+5. Send that URL to your opponent. Every push to `main` redeploys automatically.
 
 Notes:
 - One tiny instance handles your games easily; check DigitalOcean's current pricing,
