@@ -9,6 +9,7 @@ function newPlayer(deck) {
   return {
     hp: RULES.maxHp,
     pips: 0,
+    hasStarted: false,   // set true after first turn begins (no +2 pips/draw on turn 1)
     hand: [],
     deck: [...deck],
     blades: [],          // e.g. [25, 35] — stack, all consumed on next damaging hit
@@ -137,8 +138,13 @@ function startTurn(state, events) {
   const p = state.players[si];
   events.push({ k: 'turn', seat: si, turnNum: state.turnNum });
 
-  p.pips = Math.min(RULES.pipCap, p.pips + RULES.pipPerTurn);
-  drawCard(p, events, si);
+  // Each player's first turn uses their starting pips/hand as dealt; the +2
+  // pips and card draw apply from each player's second turn onward.
+  if (p.hasStarted) {
+    p.pips = Math.min(RULES.pipCap, p.pips + RULES.pipPerTurn);
+    drawCard(p, events, si);
+  }
+  p.hasStarted = true;
 
   // HoTs tick at the start of your turn.
   for (const h of p.hots) {

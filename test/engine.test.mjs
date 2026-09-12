@@ -30,10 +30,10 @@ function give(st, si, id) { st.players[si].hand.push(id); st.players[si].pips = 
 describe('setup', () => {
   it('starting hands, pips, turn order', () => {
     const { state } = createMatch([deckOf(), deckOf()], 0);
-    assert.equal(state.players[0].hand.length, 8); // 7 + 1 drawn on first turn
+    assert.equal(state.players[0].hand.length, 7); // starting hand, no draw on turn 1
     assert.equal(state.players[1].hand.length, 7);
-    assert.equal(state.players[0].pips, 7); // 5 start + 2 on first startTurn
-    assert.equal(state.players[1].pips, 7); // 7 start, no turn yet
+    assert.equal(state.players[0].pips, 5); // first player starts with 5
+    assert.equal(state.players[1].pips, 7); // second player starts with 7
     assert.equal(state.current, 0);
   });
   it('deck validation', () => {
@@ -123,12 +123,12 @@ describe('turn structure', () => {
   it('redraw keeps hand size and draws in deck order', () => {
     const d = deckOf('spark', 'bolt', 'strike', 'blast', 'cataclysm', 'jab', 'hook');
     const { state } = createMatch([d, deckOf()], 0);
-    // hand after startTurn draw: [spark,bolt,strike,blast,cataclysm,jab,hook,spark]
+    // starting hand: first 7 cards, no draw on turn 1
     const r = applyAction(state, 0, { type: 'redraw', hand: [0, 1, 2] });
     assert.ok(!r.error);
-    assert.equal(state.players[0].hand.length, 8);
-    assert.deepEqual(state.players[0].hand.slice(0, 5), ['blast', 'cataclysm', 'jab', 'hook', 'spark']);
-    assert.deepEqual(state.players[0].hand.slice(5), ['spark', 'spark', 'spark']); // next 3 in order
+    assert.equal(state.players[0].hand.length, 7);
+    assert.deepEqual(state.players[0].hand.slice(0, 4), ['blast', 'cataclysm', 'jab', 'hook']);
+    assert.deepEqual(state.players[0].hand.slice(4), ['spark', 'spark', 'spark']); // next 3 in order
     assert.equal(state.current, 1); // turn passed
   });
   it('pips capped at 14', () => {

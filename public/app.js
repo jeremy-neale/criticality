@@ -160,7 +160,10 @@ function openKey(k) {
   if (e) { e.classList.add('hl'); e.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
 }
 $('key-tab').addEventListener('click', () => { buildKey(); $('key-drawer').classList.toggle('open'); });
-$('key-close').addEventListener('click', () => $('key-drawer').classList.remove('open'));
+$('key-close').addEventListener('click', (ev) => { ev.stopPropagation(); $('key-drawer').classList.remove('open'); });
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') $('key-drawer').classList.remove('open');
+});
 
 function renderLibrary() {
   $('rules-list').innerHTML = RULES_SUMMARY.map(r => `<li>${r}</li>`).join('');
@@ -360,7 +363,9 @@ function renderOrb(prefix, p, name) {
     p.traps.length ? `🪤${p.traps.length > 1 ? '×' + p.traps.length : ''}` : '',
     p.traps.length ? `Traps: ${p.traps.map(t => '+' + t + '%').join(', ')} — boost the next hit(s) taken` : '');
   $(prefix + '-status').innerHTML = chipsFor(p);
-  $(prefix + '-pips').textContent = `⚡ ${p.pips}`;
+  const pipLabel = prefix === 'you' ? 'You' : 'Foe';
+  $(prefix + '-pips').textContent = `${pipLabel} ⚡ ${p.pips}`;
+  $(prefix + '-pips').title = `${pipLabel === 'You' ? 'Your' : "Foe's"} pips`;
   // orbiting DoT/HoT indicators: up to 4 each, extras collapse into a +N bubble
   const orbEl = $(prefix + '-orbiters');
   if (orbEl) {
@@ -413,7 +418,12 @@ function renderDuel(events) {
     const afford = snap.you.pips >= CARDS[id].cost;
     if (!afford && !redrawMode) el.classList.add('cant');
     if (redrawMode && redrawSel.has(i)) el.classList.add('selected');
-    el.title = afford || redrawMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pips`;
+    el.setAttribute('role', 'button');
+    el.tabIndex = (mine && !snap.winner) ? 0 : -1;
+    el.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
+    });
+    el.title = afford || redrawMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pip${CARDS[id].cost === 1 ? '' : 's'}`;
     el.addEventListener('click', () => {
       if (!mine || snap.winner) return;
       if (redrawMode) {
@@ -441,7 +451,7 @@ function handleEvent(e) {
   switch (e.k) {
     case 'start': {
       const mi = snap.seats.indexOf(e.first);
-      FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> moves first.`);
+      FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> ${seatName(mi) === 'You' ? 'move' : 'moves'} first.`);
       break;
     }
     case 'turn': break; // banner covers it
