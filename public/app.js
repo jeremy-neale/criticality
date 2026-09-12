@@ -192,6 +192,19 @@ $('btn-join').addEventListener('click', async () => {
   try { await ensureWs(); send({ t: 'join', code, name: myName }); }
   catch { toast('Could not connect to the server.'); }
 });
+$('btn-copy-link').addEventListener('click', async () => {
+  if (!roomCode) return;
+  const url = `${location.origin}/?code=${roomCode}`;
+  try { await navigator.clipboard.writeText(url); toast('Invite link copied!'); }
+  catch { prompt('Copy this invite link:', url); }
+});
+// pre-fill the join code from a shared ?code= link
+(function checkInviteCode() {
+  try {
+    const code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+    if (code) { $('join-code').value = code; $('name').focus(); }
+  } catch {}
+})();
 (function checkRejoin() {
   try {
     const s = JSON.parse(localStorage.getItem('duelSession') || 'null');
