@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Duel Simulator</title>
+<title>Criticality</title>
 <base href="/">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -12,7 +12,7 @@
 
   <!-- ============ HOME ============ -->
   <section id="screen-home" class="screen">
-    <h1>⚔️ Duel Simulator</h1>
+    <h1>⚔️ Criticality</h1>
     <p class="sub">Bare-bones deterministic PvP. Build a deck, duel a friend.</p>
     <div class="panel">
       <label>Your name <input id="name" maxlength="24" placeholder="Player 1"></label>
@@ -50,7 +50,21 @@
     <div class="panel">
       <div id="lobby-players"></div>
       <p id="lobby-wait" class="muted">Waiting for opponent…</p>
-      <button id="btn-start-build" class="primary hidden">Start building ⚒️</button>
+      <div id="neg-panel" class="hidden">
+        <h3>Negotiate the duel</h3>
+        <p class="sub tiny">Bid for turn order: whoever goes second gets bonus pips. Changing anything un-readies both players — or just hit Ready to play the default (creator first, +2 pips).</p>
+        <div class="row"><span>Goes first:</span>
+          <button id="neg-first-0" class="toggle"></button>
+          <button id="neg-first-1" class="toggle"></button>
+        </div>
+        <div class="row"><span>Second-player bonus pips:</span>
+          <button id="neg-minus" class="ghost">−</button>
+          <b id="neg-bonus">+2</b>
+          <button id="neg-plus" class="ghost">+</button>
+        </div>
+        <div id="neg-status" class="muted"></div>
+        <button id="btn-neg-ready" class="primary">Ready ✓</button>
+      </div>
       <div><button class="ghost" data-nav="home">Leave</button></div>
     </div>
   </section>
@@ -85,12 +99,6 @@
           </select>
         </label>
       </div>
-      <div class="row">
-        <span>Go:</span>
-        <button id="pick-first" class="toggle">1st</button>
-        <button id="pick-second" class="toggle">2nd</button>
-      </div>
-      <p class="muted tiny">If you both pick the same, the order is random.</p>
       <button id="btn-ready" class="primary">Ready ✓</button>
     </div>
   </section>

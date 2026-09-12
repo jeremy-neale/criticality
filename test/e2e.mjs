@@ -60,24 +60,54 @@ const errDeck = await A.next('error');
 if (!/at least 40/.test(errDeck.msg)) fail('short deck should error');
 console.log('short deck rejected OK');
 
-// valid decks
-A.send({ t: 'deck', cards: aggroDeck() });
-B.send({ t: 'deck', cards: aggroDeck() });
+// ---- negotiation: bid for turn order + second-player bonus pips ----
+// default: seat 0 first, +2
 async function awaitLobby(client, pred) {
   for (;;) { const l = await client.next('lobby'); if (pred(l)) return l; }
 }
+let lob = await awaitLobby(A, l => l.phase === 'lobby' && l.neg && l.neg.first === 0 && l.neg.p2bonus === 2);
+console.log('neg defaults OK (seat 0 first, +2)');
+A.send({ t: 'neg', first: 1, p2bonus: 4 }); // A bids: B goes first, B gets +4
+lob = await awaitLobby(A, l => l.neg.first === 1 && l.neg.p2bonus === 4);
+if (lob.neg.ready[0] || lob.neg.ready[1]) fail('neg change should unready both');
+console.log('neg change OK (seat 1 first, +4)');
+A.send({ t: 'neg_ready' }); // A readies on B-first/+4
+lob = await awaitLobby(A, l => l.neg.ready[0] && !l.neg.ready[1]);
+console.log('A neg-ready OK');
+B.send({ t: 'neg', first: 0, p2bonus: 3 }); // B counters: A first, +3 — unreadies A
+lob = await awaitLobby(A, l => l.neg.first === 0 && l.neg.p2bonus === 3 && !l.neg.ready[0] && !l.neg.ready[1]);
+console.log('counter-bid unreadied both OK');
+A.send({ t: 'neg_ready' });
+B.send({ t: 'neg_ready' }); // both agree: A first, +3
+lob = await awaitLobby(A, l => l.phase === 'build');
+await awaitLobby(B, l => l.phase === 'build');
+console.log('both neg-ready -> build phase OK');
+
+// valid decks (build phase)
+A.send({ t: 'deck', cards: aggroDeck() });
+B.send({ t: 'deck', cards: aggroDeck() });
 await awaitLobby(A, l => l.hasDeck[0] && l.hasDeck[1]);
 await awaitLobby(B, l => l.hasDeck[0] && l.hasDeck[1]);
 
 // host changes timer
 A.send({ t: 'settings', minutes: 10 });
-const lob = await awaitLobby(A, l => l.settings.minutes === 10);
+lob = await awaitLobby(A, l => l.settings.minutes === 10);
 console.log('settings OK');
 
-// ready up with opposite order picks -> deterministic order
-A.send({ t: 'ready', order: 'first' });
-B.send({ t: 'ready', order: 'second' });
+// ready up -> duel starts with negotiated order/pips (seat 0 first, +3)
+A.send({ t: 'ready' });
+B.send({ t: 'ready' });
 console.log('both ready, match starting');
+
+// negotiated terms took effect: seat 0 (A) moves first with 5 pips, seat 1 (B) has 5+3
+const s0 = await A.next('state');
+if (s0.snap.you.pips !== 5) fail('A should start with 5 pips, got ' + s0.snap.you.pips);
+if (s0.snap.foe.pips !== 8) fail('B should start with 8 pips (5+3), got ' + s0.snap.foe.pips);
+if (s0.snap.current !== 'you') fail('A should move first');
+console.log('negotiated pips/order OK (5 vs 8, A first)');
+// we consumed A's opening state for the assertion, so play its turn now
+const firstAction = chooseAction(s0.snap, 0);
+if (firstAction) A.send({ t: 'action', action: firstAction });
 
 // play until over
 function chooseAction(snap, roomSeat) {

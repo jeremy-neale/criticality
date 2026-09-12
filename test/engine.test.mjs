@@ -36,6 +36,18 @@ describe('setup', () => {
     assert.equal(state.players[1].pips, 7); // second player starts with 7
     assert.equal(state.current, 0);
   });
+  it('negotiated second-player bonus pips', () => {
+    const m0 = createMatch([deckOf(), deckOf()], 0, 0);
+    assert.equal(m0.state.players[0].pips, 5);
+    assert.equal(m0.state.players[1].pips, 5); // +0 bonus
+    const m4 = createMatch([deckOf(), deckOf()], 1, 4);
+    assert.equal(m4.state.players[0].pips, 5);
+    assert.equal(m4.state.players[1].pips, 9); // +4 bonus
+    assert.equal(m4.events[0].k, 'start');
+    assert.equal(m4.events[0].p2bonus, 4); // start event carries the bonus
+    const mClamped = createMatch([deckOf(), deckOf()], 0, 99);
+    assert.equal(mClamped.state.players[1].pips, 5 + RULES.p2bonusMax); // clamped
+  });
   it('deck validation', () => {
     assert.match(validateDeck(validDeck().slice(0, 39)), /at least 40/);
     assert.match(validateDeck([...Array(5).fill('spark'), ...validDeck().slice(0, 35)]), /more than 4/);

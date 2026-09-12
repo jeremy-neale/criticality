@@ -37,7 +37,7 @@ const FX = {
 /* ================= state ================= */
 let ws = null, roomSeat = -1, myToken = null, roomCode = null;
 let myName = 'Player 1', lobby = null, snap = null;
-let deck = [], orderPick = 'first', deckSaved = false;
+let deck = [], deckSaved = false;
 let redrawMode = false; const redrawSel = new Set();
 let reconnectTries = 0;
 
@@ -214,7 +214,23 @@ function renderLobby() {
     `<div>${names[1] ? names[1] + (roomSeat === 1 ? ' (you)' : '') : '<span class="muted">waiting…</span>'}</div>`;
   const both = names[0] && names[1];
   $('lobby-wait').classList.toggle('hidden', !!both);
-  $('btn-start-build').classList.toggle('hidden', !both);
+  // negotiation panel (lobby phase only)
+  const negOpen = !!(both && lobby.phase === 'lobby' && lobby.neg);
+  $('neg-panel').classList.toggle('hidden', !negOpen);
+  if (negOpen) {
+    const neg = lobby.neg;
+    $('neg-first-0').textContent = names[0] + (roomSeat === 0 ? ' (you)' : '');
+    $('neg-first-1').textContent = names[1] + (roomSeat === 1 ? ' (you)' : '');
+    $('neg-first-0').classList.toggle('on', neg.first === 0);
+    $('neg-first-1').classList.toggle('on', neg.first === 1);
+    $('neg-bonus').textContent = `+${neg.p2bonus}`;
+    $('neg-minus').disabled = neg.p2bonus <= RULES.p2bonusMin;
+    $('neg-plus').disabled = neg.p2bonus >= RULES.p2bonusMax;
+    $('neg-status').innerHTML =
+      `You: ${neg.ready[roomSeat] ? '<b>READY ✓</b>' : 'not ready'} · ` +
+      `Opponent: ${neg.ready[1 - roomSeat] ? '<b>READY ✓</b>' : 'not ready'}`;
+    $('btn-neg-ready').textContent = neg.ready[roomSeat] ? 'Unready' : 'Ready ✓';
+  }
   // build-screen side updates
   if (both && lobby.phase === 'build') {
     const foe = 1 - roomSeat;
@@ -224,7 +240,18 @@ function renderLobby() {
     else { $('btn-ready').textContent = 'Ready ✓'; }
   }
 }
-$('btn-start-build').addEventListener('click', () => { send({ t: 'start_build' }); });
+/* negotiation: bid for turn order + second-player bonus pips */
+function sendNeg(first, p2bonus) {
+  if (lobby && lobby.neg) send({ t: 'neg', first, p2bonus });
+}
+$('neg-first-0').addEventListener('click', () => sendNeg(0, lobby.neg.p2bonus));
+$('neg-first-1').addEventListener('click', () => sendNeg(1, lobby.neg.p2bonus));
+$('neg-minus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus - 1));
+$('neg-plus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus + 1));
+$('btn-neg-ready').addEventListener('click', () => {
+  if (!lobby || !lobby.neg) return;
+  send({ t: lobby.neg.ready[roomSeat] ? 'neg_unready' : 'neg_ready' });
+});
 
 function enterBuild() {
   deck = []; deckSaved = false; renderPool(); renderDeck();
@@ -283,18 +310,10 @@ $('btn-save-deck').addEventListener('click', () => {
   renderLobby();
 });
 $('match-minutes').addEventListener('change', (e) => send({ t: 'settings', minutes: Number(e.target.value) }));
-$('pick-first').addEventListener('click', () => setOrder('first'));
-$('pick-second').addEventListener('click', () => setOrder('second'));
-function setOrder(o) {
-  orderPick = o;
-  $('pick-first').classList.toggle('on', o === 'first');
-  $('pick-second').classList.toggle('on', o === 'second');
-}
-setOrder('first');
 $('btn-ready').addEventListener('click', () => {
   if (!lobby) return;
   if (lobby.ready[roomSeat]) send({ t: 'unready' });
-  else send({ t: 'ready', order: orderPick });
+  else send({ t: 'ready' });
 });
 
 /* ================= deck presets ================= */
@@ -451,7 +470,8 @@ function handleEvent(e) {
   switch (e.k) {
     case 'start': {
       const mi = snap.seats.indexOf(e.first);
-      FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> ${seatName(mi) === 'You' ? 'move' : 'moves'} first.`);
+      const p2b = e.p2bonus ?? (RULES.pipStart[1] - RULES.pipStart[0]);
+      FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> ${seatName(mi) === 'You' ? 'move' : 'moves'} first. Second player +${p2b} pips.`);
       break;
     }
     case 'turn': break; // banner covers it

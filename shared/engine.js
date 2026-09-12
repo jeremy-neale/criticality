@@ -27,11 +27,11 @@ function newPlayer(deck) {
 }
 
 // decks: [deckSeat0, deckSeat1]; seat 0 moves first.
-export function createMatch(decks, firstSeat) {
+export function createMatch(decks, firstSeat, p2Bonus = RULES.pipStart[1] - RULES.pipStart[0]) {
   const order = firstSeat === 0 ? [0, 1] : [1, 0];
   const players = [newPlayer(decks[order[0]]), newPlayer(decks[order[1]])];
   players[0].pips = RULES.pipStart[0];
-  players[1].pips = RULES.pipStart[1];
+  players[1].pips = RULES.pipStart[0] + Math.max(RULES.p2bonusMin, Math.min(RULES.p2bonusMax, Math.round(p2Bonus)));
   for (const p of players) {
     p.hand = p.deck.splice(0, RULES.handStart);
   }
@@ -44,7 +44,7 @@ export function createMatch(decks, firstSeat) {
     winner: null,          // null | 0 | 1 | 'draw'
     winReason: null,
   };
-  const events = [{ k: 'start', first: order[0] }];
+  const events = [{ k: 'start', first: order[0], p2bonus: players[1].pips - players[0].pips }];
   startTurn(state, events);
   return { state, events };
 }

@@ -7,15 +7,16 @@ Deck building → ready up → live duel over WebSocket. One server, one link, t
 
 1. Open the link, enter your name, **Create room** — you get a 4-letter code.
 2. Send the code to your opponent; they open the link and **join** with it.
-3. Both build a deck (**40–100 cards**, max 4 copies each — the **first 7** are your starting hand, outlined in gold), save it, pick 1st/2nd, hit **Ready**.
-4. Duel! 30s per turn, configurable match timer (default 15 min).
+3. Negotiate the duel: bid who goes first and how many bonus pips (+0 to +5) the second player gets. Changing anything un-readies both players. Just hit **Ready** to play the default (room creator first, second player +2 pips).
+4. Both build a deck (**40–100 cards**, max 4 copies each — the **first 7** are your starting hand, outlined in gold), save it, hit **Ready**.
+5. Duel! 30s per turn, configurable match timer (default 15 min).
 
 There's also a standalone **Card library** page on the home screen — all cards and base stats, no room needed.
 
 ## Rules (short version)
 
 - 10,000 HP · +150% damage · 50% resist · 30 pierce. No fizzle, no crit, no RNG.
-- First player starts with 5 pips, second with 7. +2 pips at the start of each of your turns (cap 14).
+- First player starts with 5 pips, second with 5 + the negotiated bonus (default +2, range +0 to +5). +2 pips at the start of each of your turns (cap 14).
 - Each turn: draw 1 card, then **one** move — play a card, pass, or **redraw** (discard any number of cards, draw that many replacements in deck order).
 - Damage = base × (1 + damage% + blades + outgoing aura) × (1 − weakness) × (1 − outgoing debuff) × (1 − max(0, resist − pierce)) × shields/brace (pierceable).
 - **Weakness** (one at a time, on the hitter): scales the *whole* hit including DoT ticks, then consumed. Cannot be pierced.
@@ -61,7 +62,7 @@ WebSockets work out of the box.
 2. Choose **GitHub**, authorize, and pick your `duel-simulator` repo / `main` branch.
 3. App Platform detects the `Dockerfile` automatically. Keep the suggested settings
    (service name `game`, the smallest `basic-xxs` instance is plenty).
-4. Create the app. You'll get a public URL like `https://duel-simulator-xxxxx.ondigitalocean.app`.
+4. Create the app. You'll get a public URL like `https://criticality-xxxxx.ondigitalocean.app`.
 5. Send that URL to your opponent. Every push to `main` redeploys automatically.
 
 Notes:

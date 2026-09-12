@@ -64,7 +64,7 @@ function lobbyMsg(room) {
     names: room.players.map(p => (p ? p.name : null)),
     hasDeck: room.players.map(p => !!(p && p.deck)),
     ready: room.players.map(p => !!(p && p.ready)),
-    orders: room.players.map(p => (p ? p.order : null)),
+    neg: { first: room.neg.first, p2bonus: room.neg.p2bonus, ready: [...room.neg.ready] },
     settings: room.settings,
     seats: [0, 1],
   };
@@ -133,12 +133,9 @@ function afterAction(room, events) {
 
 function startMatch(room) {
   const decks = room.players.map(p => p.deck);
-  const [o0, o1] = room.players.map(p => p.order);
-  let firstSeat; // room seat that moves first
-  if (o0 === 'first' && o1 === 'second') firstSeat = 0;
-  else if (o0 === 'second' && o1 === 'first') firstSeat = 1;
-  else firstSeat = Math.random() < 0.5 ? 0 : 1; // both agreed on the same -> random
-  const { state, events } = createMatch(decks, firstSeat);
+  const firstSeat = room.neg.first; // room seat that moves first (negotiated in lobby)
+  const p2bonus = room.neg.p2bonus;
+  const { state, events } = createMatch(decks, firstSeat, p2bonus);
   room.match = { state };
   const mins = room.settings.minutes;
   const now = Date.now();
@@ -182,7 +179,8 @@ wss.on('connection', (ws) => {
       const name = String(m.name || 'Player 1').slice(0, 24);
       room = {
         code, settings: { minutes: RULES.defaultMatchMins },
-        players: [{ ws, name, token: token(), deck: null, ready: false, order: null, connected: true }, null],
+        players: [{ ws, name, token: token(), deck: null, ready: false, connected: true }, null],
+        neg: { first: 0, p2bonus: RULES.pipStart[1] - RULES.pipStart[0], ready: [false, false] },
         match: null, building: false, turnEndsAt: null, matchEndsAt: null, turnTimer: null, matchTimer: null,
         cleanupTimer: null,
       };
@@ -217,7 +215,7 @@ wss.on('connection', (ws) => {
       if (room.players[1]) { send(ws, { t: 'error', msg: 'Room is full.' }); room = null; return; }
       seat = 1;
       const name = String(m.name || 'Player 2').slice(0, 24);
-      room.players[1] = { ws, name, token: token(), deck: null, ready: false, order: null, connected: true };
+      room.players[1] = { ws, name, token: token(), deck: null, ready: false, connected: true };
       send(ws, { t: 'room', code, seat: 1, token: room.players[1].token, settings: room.settings });
       broadcastLobby(room);
       return;
@@ -226,10 +224,38 @@ wss.on('connection', (ws) => {
     if (!room || seat < 0 || !me()) return;
     const p = me();
 
-    if (m.t === 'start_build') {
+    // Turn-order / pip negotiation (lobby phase only). Changing any option
+    // un-readies both players, so nobody gets locked into settings they
+    // didn't agree to.
+    if (m.t === 'neg') {
+      if (room.match || room.building) return;
+      const first = m.first === 1 ? 1 : 0;
+      let p2bonus = Math.round(Number(m.p2bonus));
+      if (!Number.isFinite(p2bonus)) return;
+      p2bonus = Math.max(RULES.p2bonusMin, Math.min(RULES.p2bonusMax, p2bonus));
+      const n = room.neg;
+      if (n.first === first && n.p2bonus === p2bonus) return; // no-op
+      n.first = first; n.p2bonus = p2bonus;
+      n.ready = [false, false];
+      broadcastLobby(room);
+      return;
+    }
+
+    if (m.t === 'neg_ready') {
       if (room.match || room.building || !room.players[0] || !room.players[1]) return;
-      room.building = true;
-      room.players.forEach(pl => { if (pl) { pl.ready = false; pl.order = null; } });
+      room.neg.ready[seat] = true;
+      if (room.neg.ready[0] && room.neg.ready[1]) {
+        // Both agreed: advance to deck building.
+        room.building = true;
+        room.players.forEach(pl => { if (pl) pl.ready = false; });
+      }
+      broadcastLobby(room);
+      return;
+    }
+
+    if (m.t === 'neg_unready') {
+      if (room.match || room.building) return;
+      room.neg.ready[seat] = false;
       broadcastLobby(room);
       return;
     }
@@ -257,7 +283,6 @@ wss.on('connection', (ws) => {
     if (m.t === 'ready') {
       if (room.match || !p.deck) return;
       p.ready = true;
-      p.order = m.order === 'second' ? 'second' : 'first';
       broadcastLobby(room);
       if (room.players[0] && room.players[1] && room.players[0].ready && room.players[1].ready) {
         startMatch(room);
@@ -286,9 +311,9 @@ wss.on('connection', (ws) => {
     if (m.t === 'rematch') {
       clearTimers(room);
       room.match = null;
-      room.building = true;
+      room.building = true; // keep the negotiated turn order/pips for the rematch
       room.turnEndsAt = room.matchEndsAt = null;
-      room.players.forEach(pl => { if (pl) { pl.ready = false; pl.order = null; } });
+      room.players.forEach(pl => { if (pl) pl.ready = false; });
       broadcastLobby(room);
       return;
     }

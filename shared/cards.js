@@ -6,7 +6,9 @@ export const RULES = {
   dmgBonus: 1.5,      // +150% damage stat
   resist: 0.5,        // 50% resist stat
   basePierce: 30,     // 30 pierce stat
-  pipStart: [5, 7],   // first player starts with 5 pips, second with 7
+  pipStart: [5, 7],   // DEFAULT first/second starting pips (negotiable per match)
+  p2bonusMin: 0,      // second player's negotiated bonus pips range
+  p2bonusMax: 5,
   pipPerTurn: 2,
   pipCap: 14,
   handStart: 7,       // first 7 cards of the deck = starting hand
@@ -116,7 +118,7 @@ export function validateDeck(deck) {
 // One-line rules summary for the library page / README.
 export const RULES_SUMMARY = [
   `${RULES.maxHp.toLocaleString()} HP, +${RULES.dmgBonus * 100}% damage, ${RULES.resist * 100}% resist, ${RULES.basePierce} pierce. NO RNG.`,
-  `First player starts with ${RULES.pipStart[0]} pips, second with ${RULES.pipStart[1]}. Gain ${RULES.pipPerTurn} pips at the start of each of your turns (cap ${RULES.pipCap}).`,
+  `Turn order is negotiated before the duel: first player starts with ${RULES.pipStart[0]} pips, second with ${RULES.pipStart[0]} + the agreed bonus (default +${RULES.pipStart[1] - RULES.pipStart[0]}, range +${RULES.p2bonusMin} to +${RULES.p2bonusMax}). Gain ${RULES.pipPerTurn} pips at the start of each of your turns (cap ${RULES.pipCap}).`,
   `Decks are ${RULES.deckMin}-${RULES.deckMax} cards, max ${RULES.copiesMax} copies of each card. The first ${RULES.handStart} cards are your starting hand; the rest are drawn in order.`,
   `Each turn: draw 1 card, then one move — play a card, pass, or redraw (discard any number of cards, draw that many replacements). ${RULES.turnSecs}s per turn.`,
   `Damage = base x (1 + damage% + blades + outgoing aura) x (1 - weakness) x (1 - outgoing debuff) x (1 - max(0, resist - pierce)) x shields/brace (each pierceable) x (1 + traps on the target).`,
