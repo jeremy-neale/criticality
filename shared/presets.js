@@ -13,8 +13,8 @@ export const PRESETS = [
     cards: [
       ...x4('spark', 'bolt', 'jab', 'shatter'),
       ...x3('strike', 'hook', 'smolder', 'blade', 'empower'),
-      ...x2('twinfang', 'siphon', 'sunder', 'pierce'),
-      'lash',
+      ...x2('twinfang', 'sunder', 'pierce', 'ember'),
+      'siphon',
     ],
   },
   {
@@ -46,7 +46,7 @@ export const PRESETS = [
     cards: [
       ...x4('smolder'),
       ...x3('spark', 'strike', 'jab', 'shield', 'blade', 'mend'),
-      ...x2('trap', 'pierce', 'empower', 'bubble', 'lash', 'hook', 'bolt'),
+      ...x2('trap', 'pierce', 'empower', 'bubble', 'hook', 'bolt', 'ember'),
       ...x1('sunder', 'wither', 'surge', 'expose'),
     ],
   },

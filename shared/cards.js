@@ -39,6 +39,10 @@ export const CARDS = {
   sunder: { name: 'Sunder', cost: 7, kind: 'hit', dmg: 500, brace: 20,
             text: '500 damage, \u221220% brace.' },
 
+  // ---- 0-pip hit ----
+  ember:   { name: 'Ember',     cost: 0, kind: 'hit', dmg: 80,
+             text: '80 damage.' },
+
   // ---- 0-pip utility ----
   shield:  { name: 'Shield',    cost: 0, kind: 'shield', shield: 50,
              text: '\u221250% shield.' },
@@ -116,7 +120,7 @@ export const GLOSSARY = {
   lifesteal: { name: 'Lifesteal', text: 'Heal yourself for X% of the damage this hit deals.' },
 };
 
-// Effective largest deck with the 4-copy limit (120 with the current 30 cards).
+// Effective largest deck with the 4-copy limit.
 export const EFFECTIVE_DECK_MAX = CARD_IDS.length * RULES.copiesMax;
 
 export function validateDeck(deck) {
