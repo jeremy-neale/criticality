@@ -2,34 +2,12 @@
 // Run: node sim/bots.mjs [gamesPerMatchup]
 import { createMatch, applyAction } from '../shared/engine.js';
 import { CARDS, RULES, validateDeck } from '../shared/cards.js';
+import { PRESETS } from '../shared/presets.js';
 
 const N = Number(process.argv[2] || 200);
 
-function deckOf(entries) {
-  const d = [];
-  for (const [id, n] of entries) for (let i = 0; i < n; i++) d.push(id);
-  return d;
-}
-
-// ---- test decks (40 cards each) ----
-const DECKS = {
-  aggro: deckOf([
-    ['spark', 4], ['bolt', 4], ['strike', 4], ['jab', 4], ['blade', 4],
-    ['hook', 4], ['lash', 4], ['shield', 4], ['trap', 4], ['pierce', 4],
-  ]),
-  dots: deckOf([
-    ['smolder', 4], ['inferno', 4], ['trap', 4], ['pierce', 4], ['weakness', 4],
-    ['shield', 4], ['spark', 4], ['bolt', 4], ['jab', 4], ['wither', 4],
-  ]),
-  turtle: deckOf([
-    ['shield', 4], ['renew', 4], ['mend', 4], ['sunder', 4], ['expose', 4],
-    ['weakness', 4], ['blast', 4], ['strike', 4], ['empower', 4], ['bubble', 4],
-  ]),
-  balanced: deckOf([
-    ['spark', 4], ['bolt', 4], ['jab', 4], ['blade', 4], ['shield', 4],
-    ['smolder', 4], ['trap', 4], ['hook', 4], ['lash', 4], ['renew', 4],
-  ]),
-};
+// ---- test decks: the real presets players actually use ----
+const DECKS = Object.fromEntries(PRESETS.map(p => [p.id, [...p.cards]]));
 for (const [k, d] of Object.entries(DECKS)) {
   const err = validateDeck(d);
   if (err) throw new Error(`deck ${k}: ${err}`);
@@ -60,7 +38,7 @@ const POLICIES = {
   },
   // maximize immediate damage per pip, simple survival instincts
   aggro(state, si) {
-    const p = state.players[si];
+    const p = state.players[si], foe = state.players[1 - si];
     const plays = legalPlays(state, si);
     if (!plays.length) {
       // redraw dead expensive cards if nothing playable
@@ -77,6 +55,11 @@ const POLICIES = {
       if (c.kind === 'blade') s = 55;
       if (c.kind === 'trap') s = 50;
       if (c.kind === 'pierce') s = p.blades.length ? 70 : 20;
+      if (c.kind === 'pierce' && foe.shields.length) s += 40;
+      if (c.kind === 'cleanse') {
+        const roundsLeft = p.dots.reduce((a, d) => a + d.rounds, 0);
+        s = p.dots.length ? 300 + 200 * roundsLeft : 12;
+      }
       if (c.kind === 'shield') s = p.hp < 5000 ? 60 : 25;
       if (c.kind === 'hot') s = p.hp < 6000 ? 65 : 15;
       if (c.kind === 'weak') s = 45;
@@ -84,11 +67,15 @@ const POLICIES = {
       if (c.kind === 'bubble') s = 40;
       if (c.kind === 'expose' || c.kind === 'waura') s = 42;
       if (c.kind === 'aura') s = 48;
+      if (c.shieldBreak && foe.shields.length) s += 40;
+      if (c.hits > 1 && foe.shields.length) s += 35;
+      if (c.lifesteal && p.hp < 7000) s += 30;
+      if (c.stealPips) s += 25;
       if (s > bestScore) { bestScore = s; best = i; }
     }
     return { type: 'play', hand: best };
   },
-  // turtle: defense first, chip damage
+  // turtle: defense first, chip damage only when safe
   turtle(state, si) {
     const p = state.players[si], foe = state.players[1 - si];
     const plays = legalPlays(state, si);
@@ -97,16 +84,26 @@ const POLICIES = {
     for (const i of plays) {
       const c = CARDS[p.hand[i]];
       let s = 0;
-      const dmg = (c.dmg || 0) + (c.tick || 0) * (c.ticks || 0);
-      if (c.kind === 'shield') s = 90;
+      if (c.kind === 'shield') s = 90 + (foe.dots.length ? 20 : 0);
       else if (c.kind === 'hot') s = p.hp < 8000 ? 85 : 20;
-      else if (c.kind === 'weak' || c.kind === 'waura') s = 70;
-      else if (c.kind === 'expose') s = 65;
-      else if (c.brace) s = 75;
-      else if (c.kind === 'sacrifice') s = 30;
-      else if (dmg) s = 30 + dmg / Math.max(1, c.cost);
-      else s = 35;
-      // don't waste shields into nothing
+      else if (c.kind === 'cleanse') {
+        const rl = p.dots.reduce((a, d) => a + d.rounds, 0);
+        s = p.dots.length ? 100 + 50 * rl : 10;
+      }
+      else if (c.kind === 'weak') s = 70;
+      else if (c.kind === 'waura') s = 65;
+      else if (c.kind === 'expose') s = 60;
+      else if (c.brace) s = 55; // sunder's brace
+      else if (c.kind === 'aura') s = 50;
+      else if (c.kind === 'bubble') s = 45;
+      else if (c.lifesteal) s = 75; // reaver: damage + heal in one action
+      else if (c.kind === 'hit' || c.kind === 'dot') {
+        const dmg = (c.dmg || 0) + (c.tick || 0) * (c.ticks || 0);
+        // chip when healthy or foe is close to dead
+        s = (p.hp > 7500 || foe.hp < 3000) ? 40 + dmg / 60 : 25;
+      }
+      else s = 25;
+      // don't stack shields into nothing
       if (c.kind === 'shield' && foe.dots.length === 0 && p.shields.length >= 2) s = 10;
       if (s > bestScore) { bestScore = s; best = i; }
     }
@@ -133,10 +130,15 @@ function playGame(deckA, deckB, polA, polB, firstSeat) {
   }
   // attribute the win to the DECK, not the match-player index:
   // firstSeat=0 -> match player 0 holds deckA; firstSeat=1 -> match player 0 holds deckB
+  // (turn cap = the live match timer: higher HP% wins, like the server's timeout rule)
   let winnerDeck = 'draw';
-  if (state.winner === 0) winnerDeck = firstSeat === 0 ? 'A' : 'B';
+  const capped = state.winner === null;
+  if (capped) {
+    const [ha, hb] = state.players.map(p => p.hp / RULES.maxHp);
+    if (ha !== hb) winnerDeck = (ha > hb) === (firstSeat === 0) ? 'A' : 'B';
+  } else if (state.winner === 0) winnerDeck = firstSeat === 0 ? 'A' : 'B';
   else if (state.winner === 1) winnerDeck = firstSeat === 0 ? 'B' : 'A';
-  return { winnerDeck, turns, cardCounts, capped: state.winner === null };
+  return { winnerDeck, turns, cardCounts, capped };
 }
 
 function matchup(nameA, nameB, polA, polB, n) {

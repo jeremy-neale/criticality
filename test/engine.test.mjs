@@ -111,23 +111,23 @@ describe('DoTs', () => {
     const { state } = createMatch([deckOf('smolder'), deckOf('weakness')], 1);
     playByName(state, 0, 'weakness'); // players[1] gets -25%
     playByName(state, 1, 'smolder');
-    // upfront 180 + first tick fires immediately (foe's turn starts next): 105
-    assert.equal(state.players[0].hp, 10000 - 180 - 105);
+    // upfront 180 + first tick fires immediately (foe's turn starts next): 120
+    assert.equal(state.players[0].hp, 10000 - 180 - 120);
     pass(state, 0);
     pass(state, 1); // second tick on players[0]'s next turn
-    assert.equal(state.players[0].hp, 10000 - 180 - 105 - 105);
+    assert.equal(state.players[0].hp, 10000 - 180 - 120 - 120);
   });
   it('ticks use shields when present, one per tick', () => {
     const { state } = createMatch([deckOf('smolder'), deckOf('shield')], 0);
-    playByName(state, 0, 'smolder'); // upfront 240 + immediate tick 140
-    assert.equal(state.players[1].hp, 10000 - 240 - 140);
+    playByName(state, 0, 'smolder'); // upfront 240 + immediate tick 160
+    assert.equal(state.players[1].hp, 10000 - 240 - 160);
     playByName(state, 1, 'shield');
-    pass(state, 0); // tick: 175*0.8*0.8=112, shield consumed
-    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 112);
+    pass(state, 0); // tick: 200*0.8*0.8=128, shield consumed
+    assert.equal(state.players[1].hp, 10000 - 240 - 160 - 128);
     assert.equal(state.players[1].shields.length, 0);
     pass(state, 1);
-    pass(state, 0); // next tick: 175*0.8=140, no shield
-    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 112 - 140);
+    pass(state, 0); // next tick: 200*0.8=160, no shield
+    assert.equal(state.players[1].hp, 10000 - 240 - 160 - 128 - 160);
   });
 });
 
@@ -207,11 +207,11 @@ describe('Traps', () => {
   it('each DoT tick uses up one trap', () => {
     const { state } = createMatch([deckOf('smolder', 'trap'), deckOf()], 0);
     playByName(state, 0, 'smolder'); // 240 upfront, dot on foe
-    pass(state, 1); // tick 140 (no trap yet)
-    assert.equal(state.players[1].hp, 10000 - 240 - 140);
+    pass(state, 1); // tick 160 (no trap yet)
+    assert.equal(state.players[1].hp, 10000 - 240 - 160);
     playByName(state, 0, 'trap'); // trap on foe
-    pass(state, 1); // tick 140 x 1.4 = 196, trap consumed
-    assert.equal(state.players[1].hp, 10000 - 240 - 140 - 196);
+    pass(state, 1); // tick 160 x 1.4 = 224, trap consumed
+    assert.equal(state.players[1].hp, 10000 - 240 - 160 - 224);
     assert.deepEqual(state.players[1].traps, []);
   });
   it('ambush: 2000 upfront, trap lands for the next hit', () => {
@@ -272,5 +272,80 @@ describe('incoming auras, weakness aura, bubble', () => {
     give(state, 0, 'bubble'); playByName(state, 0, 'bubble');
     pass(state, 1); pass(state, 0); pass(state, 1); pass(state, 0);
     assert.equal(state.bubble.owner, 0);
+  });
+});
+
+describe('hit + utility hybrids', () => {
+  it('shatter: destroys the shield before the hit', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    state.players[1].shields.push(50);
+    give(state, 0, 'shatter');
+    const r = playByName(state, 0, 'shatter'); // 260*2.5*0.8 = 520, no shield reduction
+    assert.equal(state.players[1].shields.length, 0);
+    assert.equal(state.players[1].hp, 10000 - 520);
+    assert.ok(r.events.some(e => e.k === 'shatter' && e.count === 1));
+  });
+  it('twinfang: two hits, each eats one shield', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    state.players[0].shields.push(50, 50); // defender's shields
+    pass(state, 0); // player 1's turn
+    give(state, 1, 'twinfang');
+    playByName(state, 1, 'twinfang'); // 2 x (240*2.5*0.8*0.8) = 768
+    assert.equal(state.players[0].shields.length, 0);
+    assert.equal(state.players[0].hp, 10000 - 768);
+  });
+  it('reaver: heals 50% of damage dealt', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    state.players[0].hp = 9000;
+    give(state, 0, 'reaver');
+    const r = playByName(state, 0, 'reaver'); // 240*2.5*0.8 = 480 dmg, heal 240
+    assert.equal(state.players[1].hp, 10000 - 480);
+    assert.equal(state.players[0].hp, 9000 + 240);
+    assert.ok(r.events.some(e => e.k === 'heal' && e.amount === 240));
+  });
+  it('siphon: steals 1 pip', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    give(state, 0, 'siphon');
+    const r = playByName(state, 0, 'siphon'); // 120*2.5*0.8 = 240 dmg
+    assert.equal(state.players[1].hp, 10000 - 240);
+    assert.equal(state.players[1].pips, 6); // 7 - 1
+    assert.equal(state.players[0].pips, 13); // 14 - 2 cost + 1 stolen
+    assert.ok(r.events.some(e => e.k === 'steal' && e.pips === 1));
+  });
+  it('cinder: upfront hit plus a 2-tick DoT', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    give(state, 0, 'cinder');
+    playByName(state, 0, 'cinder'); // 400*2.5*0.8 = 800, then first tick 70*2.5*0.8 = 140
+    assert.equal(state.players[1].hp, 10000 - 800 - 140);
+    assert.equal(state.players[1].dots.length, 1);
+    assert.equal(state.players[1].dots[0].tick, 70);
+    assert.equal(state.players[1].dots[0].rounds, 1); // one tick consumed immediately
+  });
+  it('purify: removes all DoTs and heals per DoT', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    state.players[0].dots.push({ tick: 80, attMult: 2.5, rounds: 3 }, { tick: 110, attMult: 2.5, rounds: 4 });
+    state.players[0].hp = 9000;
+    give(state, 0, 'purify');
+    const r = playByName(state, 0, 'purify');
+    assert.equal(state.players[0].dots.length, 0);
+    assert.equal(state.players[0].hp, 9000 + 400);
+    assert.ok(r.events.some(e => e.k === 'cleanse' && e.count === 2));
+  });
+
+  it('purify: wards against new DoTs for 2 rounds', () => {
+    const { state } = createMatch([deckOf('smolder'), deckOf()], 0);
+    pass(state, 0);
+    give(state, 1, 'purify');
+    playByName(state, 1, 'purify');
+    assert.equal(state.players[1].dotWard, 2);
+    playByName(state, 0, 'smolder'); // upfront hits, DoT is warded off
+    assert.equal(state.players[1].dots.length, 0);
+    assert.ok(state.players[1].hp < 10000); // upfront still landed
+    pass(state, 1); // ward ticks down
+    give(state, 0, 'smolder');
+    playByName(state, 0, 'smolder'); // still warded
+    assert.equal(state.players[1].dots.length, 0);
+    pass(state, 1); // ward expires
+    assert.equal(state.players[1].dotWard, 0);
   });
 });

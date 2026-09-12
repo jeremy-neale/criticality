@@ -23,6 +23,7 @@ function newPlayer(deck) {
     outBuff: null,       // {v, rounds} +% outgoing damage
     dots: [],            // [{tick, attMult, rounds}] damage over time on this player
     hots: [],            // [{heal, rounds}] healing over time on this player
+    dotWard: 0,          // rounds of immunity to gaining new DoTs (from purify)
   };
 }
 
@@ -168,6 +169,8 @@ function startTurn(state, events) {
   }
   p.dots = p.dots.filter(d => d.rounds > 0);
 
+  if (p.dotWard > 0) p.dotWard--;
+
   tickAuras(p);
 }
 
@@ -208,7 +211,37 @@ export function applyAction(state, si, action) {
 
     switch (card.kind) {
       case 'hit': {
-        const { dmg } = strike(state, si, 1 - si, card.dmg, events);
+        if (card.shieldBreak) {
+          const broken = foe.shields.splice(0, card.shieldBreak).length;
+          if (broken) events.push({ k: 'shatter', to: 1 - si, count: broken });
+        }
+        let totalDmg = 0, attMult = 1;
+        const nHits = card.hits || 1;
+        for (let h = 0; h < nHits && state.winner === null; h++) {
+          const r = strike(state, si, 1 - si, card.dmg, events);
+          totalDmg += r.dmg;
+          if (h === 0) attMult = r.attMult;
+        }
+        if (card.lifesteal && totalDmg > 0) {
+          const amt = Math.min(RULES.maxHp - me.hp, Math.round(totalDmg * card.lifesteal / 100));
+          if (amt > 0) { me.hp += amt; events.push({ k: 'heal', to: si, amount: amt }); }
+        }
+        if (card.stealPips) {
+          const stolen = Math.min(foe.pips, card.stealPips);
+          if (stolen > 0) {
+            foe.pips -= stolen;
+            me.pips = Math.min(RULES.pipCap, me.pips + stolen);
+            events.push({ k: 'steal', to: 1 - si, from: si, pips: stolen });
+          }
+        }
+        if (card.tick) {
+          if (foe.dotWard > 0) {
+            events.push({ k: 'warded', to: 1 - si });
+          } else {
+            foe.dots.push({ tick: card.tick, attMult, rounds: card.ticks });
+            events.push({ k: 'dot', to: 1 - si, tick: card.tick, rounds: card.ticks });
+          }
+        }
         if (card.blade) { me.blades.push(card.blade); events.push({ k: 'blade', to: si, v: card.blade }); }
         // NOTE: blades from the hit itself apply AFTER the hit (next damaging hit).
         if (card.weakness) { foe.weakness = card.weakness; events.push({ k: 'weak', to: 1 - si, v: card.weakness }); }
@@ -217,13 +250,16 @@ export function applyAction(state, si, action) {
         if (card.brace) { me.inAura = { v: -card.brace, rounds: RULES.auraRounds }; events.push({ k: 'brace', to: si, v: card.brace }); }
         if (card.wAura) { foe.wAura = { v: card.wAura, rounds: RULES.auraRounds }; events.push({ k: 'wAura', to: 1 - si, v: card.wAura }); }
         if (card.bubble) { state.bubble = { owner: si }; events.push({ k: 'bubble', seat: si }); }
-        void dmg;
         break;
       }
       case 'dot': {
         const { attMult } = strike(state, si, 1 - si, card.dmg, events);
-        foe.dots.push({ tick: card.tick, attMult, rounds: card.ticks });
-        events.push({ k: 'dot', to: 1 - si, tick: card.tick, rounds: card.ticks });
+        if (foe.dotWard > 0) {
+          events.push({ k: 'warded', to: 1 - si });
+        } else {
+          foe.dots.push({ tick: card.tick, attMult, rounds: card.ticks });
+          events.push({ k: 'dot', to: 1 - si, tick: card.tick, rounds: card.ticks });
+        }
         break;
       }
       case 'hot': {
@@ -273,6 +309,15 @@ export function applyAction(state, si, action) {
         me.hp -= sac;
         me.pips = Math.min(RULES.pipCap, me.pips + card.gainPips);
         events.push({ k: 'sacrifice', to: si, hp: sac, pips: card.gainPips });
+        break;
+      }
+      case 'cleanse': {
+        const n = me.dots.length;
+        me.dots = [];
+        const amt = Math.min(RULES.maxHp - me.hp, n * card.healPerDot);
+        if (amt > 0) { me.hp += amt; events.push({ k: 'heal', to: si, amount: amt }); }
+        if (card.wardRounds) me.dotWard = card.wardRounds;
+        events.push({ k: 'cleanse', to: si, count: n });
         break;
       }
       default:

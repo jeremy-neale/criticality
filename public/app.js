@@ -107,6 +107,7 @@ const KIND_STYLE = {
   dot: { cls: 'k-hit', label: '🔥 DoT' },
   shield: { cls: 'k-shield', label: '🛡 Shield' },
   hot: { cls: 'k-heal', label: '💚 Heal' },
+  cleanse: { cls: 'k-heal', label: '💚 Cleanse' },
   blade: { cls: 'k-buff', label: '✨ Buff' },
   pierce: { cls: 'k-buff', label: '✨ Buff' },
   aura: { cls: 'k-buff', label: '✨ Buff' },
@@ -136,7 +137,7 @@ function cardEl(id, extra = '') {
 
 /* ================= answer key ================= */
 const escHtml = (s) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-const KW_RE = /\b(blade|weakness|shield|trap|pierce|aura|brace|pips|DoT|HoT|bubble)\b/g;
+const KW_RE = /\b(blade|weakness|shield|trap|pierce|aura|brace|pips|DoT|HoT|bubble|shatter|lifesteal)\b/g;
 function kw(text) {
   return escHtml(text).replace(KW_RE, '<button class="kw" data-kw="$1">$1</button>');
 }
@@ -507,6 +508,10 @@ function handleEvent(e) {
     case 'dot': FX.log(`${seatName(e.to)} is burning (${e.tick}/turn × ${e.rounds}).`); break;
     case 'hot': FX.log(`${seatName(e.to)} is regenerating (${e.heal}/turn × ${e.rounds}).`); break;
     case 'sacrifice': FX.float(panel(e.to), `−${e.hp}`, 'dmg'); FX.log(`${seatName(e.to)} sacrificed ${e.hp} HP for +${e.pips} pips.`); break;
+    case 'shatter': FX.log(`💥 ${seatName(e.to)}'s shield was shattered${e.count > 1 ? ` (×${e.count})` : ''}.`); break;
+    case 'steal': FX.log(`${seatName(e.from)} stole ${e.pips} pip${e.pips > 1 ? 's' : ''} from ${seatName(e.to)}.`); break;
+    case 'cleanse': FX.log(`${seatName(e.to)} purified ${e.count} DoT${e.count === 1 ? '' : 's'}.`); break;
+    case 'warded': FX.log(`${seatName(e.to)} resisted the DoT (warded).`); break;
     case 'over': break; // handled by 'over' message
   }
 }

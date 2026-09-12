@@ -59,9 +59,25 @@ export const CARDS = {
   ambush:  { name: 'Ambush',    cost: 9, kind: 'hit', dmg: 1000, trap: 40,
              text: '1000 damage, +40% trap.' },
 
+  // ---- cleanse ----
+  purify:  { name: 'Purify',    cost: 2, kind: 'cleanse', healPerDot: 200, wardRounds: 2,
+            text: 'Remove all your DoTs, heal 200 per DoT removed. You ignore new DoTs for 2 rounds.' },
+
+  // ---- hit + utility hybrids ----
+  shatter:  { name: 'Shatter',   cost: 3, kind: 'hit', dmg: 260, shieldBreak: 1,
+              text: '260 damage, shatter one shield first.' },
+  twinfang: { name: 'Twin Fang', cost: 5, kind: 'hit', dmg: 240, hits: 2,
+              text: 'Two hits of 240 damage.' },
+  reaver:   { name: 'Reaver',    cost: 4, kind: 'hit', dmg: 240, lifesteal: 50,
+              text: '240 damage, lifesteal 50%.' },
+  siphon:   { name: 'Siphon',    cost: 2, kind: 'hit', dmg: 120, stealPips: 1,
+              text: '120 damage, steal 1 pip.' },
+  cinder:   { name: 'Cinder',    cost: 6, kind: 'hit', dmg: 400, tick: 70, ticks: 2,
+              text: '400 damage, then 70×2 DoT.' },
+
   // ---- damage over time ----
-  smolder: { name: 'Smolder', cost: 3, kind: 'dot', dmg: 120, tick: 70, ticks: 3,
-             text: '120 damage, then 70×3 DoT.' },
+  smolder: { name: 'Smolder', cost: 3, kind: 'dot', dmg: 120, tick: 80, ticks: 3,
+             text: '120 damage, then 80×3 DoT.' },
   inferno: { name: 'Inferno', cost: 6, kind: 'dot', dmg: 240, tick: 110, ticks: 4,
              text: '240 damage, then 110×4 DoT.' },
 
@@ -96,9 +112,11 @@ export const GLOSSARY = {
   HoT:      { name: 'HoT', text: 'Heal over time: heals you at the start of your next N turns.' },
   pips:     { name: 'Pips', text: 'The cost of cards. You gain 2 pips at the start of each of your turns, up to 14.' },
   bubble:   { name: 'Bubble', text: 'A single arena-wide bubble worth +25% damage to the spells of whoever set it last. It stays until someone changes it \u2014 there is no timer.' },
+  shatter:   { name: 'Shatter', text: 'Destroy a shield on the target before the hit lands \u2014 it doesn\u2019t reduce this hit.' },
+  lifesteal: { name: 'Lifesteal', text: 'Heal yourself for X% of the damage this hit deals.' },
 };
 
-// Effective largest deck with the 4-copy limit (84 with the current 21 cards).
+// Effective largest deck with the 4-copy limit (120 with the current 30 cards).
 export const EFFECTIVE_DECK_MAX = CARD_IDS.length * RULES.copiesMax;
 
 export function validateDeck(deck) {
