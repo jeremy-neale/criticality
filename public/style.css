@@ -139,23 +139,39 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
 .chip.g { border-color: var(--good); color: var(--good); }
 #turn-banner { font-weight: 800; font-size: 18px; min-height: 26px; }
 #turn-banner.you { color: var(--good); } #turn-banner.foe { color: var(--muted); }
-#timers { display: flex; justify-content: flex-end; gap: 12px; color: var(--muted); font-size: 13px; }
+/* turn clock: big, central, with a depleting bar; goes yellow <10s, red+pulsing <5s */
+#turn-clock { margin: 8px 0 2px; text-align: center; min-width: 150px; }
+#turn-timer { font-size: 36px; font-weight: 900; font-variant-numeric: tabular-nums;
+  line-height: 1; text-shadow: 0 2px 8px #000; }
+#turn-bar { height: 8px; background: #241f3d; border-radius: 6px; overflow: hidden; margin-top: 6px; }
+#turn-bar-fill { height: 100%; width: 100%; background: var(--acc2); border-radius: 6px;
+  transition: width .2s linear; }
+#turn-clock.low #turn-timer { color: var(--acc2); }
+#turn-clock.crit #turn-timer { color: var(--bad); animation: clock-pulse .5s ease-in-out infinite alternate; }
+#turn-clock.crit #turn-bar-fill { background: var(--bad); }
+@keyframes clock-pulse { from { transform: scale(1); } to { transform: scale(1.14); } }
+#match-timer { text-align: right; }
+/* spell confirm bar */
+#cast-confirm { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  background: var(--panel); border: 2px solid var(--hand-outline); border-radius: 12px;
+  padding: 10px 16px; margin: 10px auto 0; max-width: 560px; font-size: 16px;
+  box-shadow: 0 4px 24px rgba(255, 215, 93, .18); }
+#hand .card.armed { border-color: var(--hand-outline);
+  box-shadow: 0 0 0 3px var(--hand-outline), 0 -8px 22px rgba(255, 215, 93, .35);
+  transform: translateY(-12px); z-index: 20; }
 #log { background: #0d0a18; border-radius: 10px; height: 96px; overflow-y: auto;
   padding: 8px 10px; font-size: 13px; margin: 8px 0; }
 #log div { margin: 2px 0; }
-/* w101-style hand: compact fanned row; hover a card to pop it up and read it */
+/* expanded hand: full-size readable cards, slightly fanned to fit 7 across */
 #hand { display: flex; flex-wrap: nowrap; justify-content: center; align-items: flex-end;
-  padding: 30px 8px 10px; min-height: 150px; overflow: visible; }
-#hand .card { flex: 0 0 auto; width: 96px; margin-left: -22px; transform-origin: bottom center;
+  padding: 34px 8px 12px; min-height: 215px; overflow: visible; }
+#hand .card { flex: 0 0 auto; width: 140px; margin-left: -18px; transform-origin: bottom center;
   transition: transform .15s ease; }
 #hand .card:first-child { margin-left: 0; }
-#hand .card .cname { font-size: 12px; margin: 2px 0 2px 32px; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; }
-#hand .card .kind-tag { margin: 2px 0 2px 32px; font-size: 9px; }
-#hand .card .ctext { display: none; }
-#hand .card:hover { transform: scale(1.9); z-index: 30; }
-#hand .card:hover .cname { white-space: normal; overflow: visible; }
-#hand .card:hover .ctext { display: block; }
+#hand .card .cname { font-size: 14px; margin: 2px 0 2px 34px; white-space: normal; }
+#hand .card .kind-tag { margin: 2px 0 2px 34px; font-size: 10px; }
+#hand .card .ctext { display: block; }
+#hand .card:hover { transform: scale(1.22) translateY(-6px); z-index: 30; }
 #hand.locked .card { pointer-events: none; opacity: .75; }
 @media (max-width: 760px) {
   /* small screens: fall back to the wrapping grid, no hover-zoom */

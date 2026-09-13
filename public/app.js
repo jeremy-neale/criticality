@@ -136,6 +136,7 @@ let ws = null, roomSeat = -1, myToken = null, roomCode = null;
 let myName = 'Player 1', lobby = null, snap = null;
 let deck = [], deckSaved = false;
 let discardMode = false; const discardSel = new Set();
+let confirmIdx = -1; // hand index of the spell armed for casting (confirm step)
 let reconnectTries = 0;
 const lastCardBySeat = {}; // match seat -> card id of the most recent play (for hit FX)
 
@@ -261,7 +262,10 @@ function openKey(k) {
 $('key-tab').addEventListener('click', () => { buildKey(); $('key-drawer').classList.toggle('open'); });
 $('key-close').addEventListener('click', (ev) => { ev.stopPropagation(); $('key-drawer').classList.remove('open'); });
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') $('key-drawer').classList.remove('open');
+  if (ev.key === 'Escape') {
+    $('key-drawer').classList.remove('open');
+    if (confirmIdx >= 0) { confirmIdx = -1; renderDuel([]); }
+  }
 });
 
 function renderLibrary() {
@@ -546,6 +550,11 @@ function renderDuel(events) {
   $('turn-banner').textContent = snap.winner ? '' : (mine ? 'YOUR TURN' : "Opponent's turn");
   $('turn-banner').className = mine ? 'you' : 'foe';
 
+  // spell confirm: drop any stale arming, then drive the confirm bar
+  if (!mine || snap.winner || discardMode) confirmIdx = -1;
+  if (confirmIdx >= snap.you.hand.length) confirmIdx = -1;
+  if (confirmIdx >= 0 && snap.you.pips < CARDS[snap.you.hand[confirmIdx]].cost) confirmIdx = -1;
+
   // hand
   const hand = $('hand'); hand.innerHTML = '';
   hand.classList.toggle('locked', !mine || snap.winner);
@@ -554,6 +563,7 @@ function renderDuel(events) {
     const afford = snap.you.pips >= CARDS[id].cost;
     if (!afford && !discardMode) el.classList.add('cant');
     if (discardMode && discardSel.has(i)) el.classList.add('selected');
+    if (i === confirmIdx) el.classList.add('armed');
     el.setAttribute('role', 'button');
     el.tabIndex = (mine && !snap.winner) ? 0 : -1;
     el.addEventListener('keydown', (ev) => {
@@ -567,11 +577,23 @@ function renderDuel(events) {
         renderDuel([]);
       } else {
         if (!afford) { toast('Not enough pips.'); return; }
-        send({ t: 'action', action: { type: 'play', hand: i } });
+        // arm the spell; a second tap disarms, Cast confirms
+        confirmIdx = confirmIdx === i ? -1 : i;
+        renderDuel([]);
       }
     });
     hand.appendChild(el);
   });
+
+  const cc = $('cast-confirm');
+  if (confirmIdx >= 0) {
+    const c = CARDS[snap.you.hand[confirmIdx]];
+    $('cast-confirm-label').innerHTML =
+      `Cast <b>${c.name}</b> <span class="muted">(${c.cost} pip${c.cost === 1 ? '' : 's'})</span>?`;
+    cc.classList.remove('hidden');
+  } else {
+    cc.classList.add('hidden');
+  }
 
   $('btn-pass').disabled = !mine;
   $('btn-discard-mode').disabled = !mine;
@@ -642,7 +664,14 @@ function handleEvent(e) {
 }
 
 $('btn-pass').addEventListener('click', () => send({ t: 'action', action: { type: 'pass' } }));
+$('btn-cast').addEventListener('click', () => {
+  if (confirmIdx < 0 || !isMyTurn() || (snap && snap.winner)) return;
+  send({ t: 'action', action: { type: 'play', hand: confirmIdx } });
+  confirmIdx = -1;
+});
+$('btn-cast-cancel').addEventListener('click', () => { confirmIdx = -1; renderDuel([]); });
 $('btn-discard-mode').addEventListener('click', () => {
+  confirmIdx = -1;
   discardMode = true; discardSel.clear(); renderDuel([]);
   toast('Select cards, then Discard. Your hand refills to 7.');
 });
@@ -663,9 +692,21 @@ setInterval(() => {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
   const now = Date.now();
-  $('turn-timer').textContent = '⏱ ' + fmt(timerEnds.turn ? timerEnds.turn - now : null);
+  const clock = $('turn-clock'), tEl = $('turn-timer'), fill = $('turn-bar-fill');
+  const ms = timerEnds.turn ? timerEnds.turn - now : null;
+  if (ms == null) {
+    tEl.textContent = '—'; fill.style.width = '0%';
+    clock.classList.remove('low', 'crit');
+  } else {
+    const s = Math.max(0, ms / 1000);
+    // tenths under 10s so the countdown feels live
+    tEl.textContent = (s <= 10 ? s.toFixed(1) : Math.ceil(s)) + 's';
+    fill.style.width = Math.max(0, Math.min(100, (s / RULES.turnSecs) * 100)).toFixed(1) + '%';
+    clock.classList.toggle('low', s <= 10 && s > 5);
+    clock.classList.toggle('crit', s <= 5);
+  }
   $('match-timer').textContent = '⏳ ' + fmt(timerEnds.match ? timerEnds.match - now : null);
-}, 500);
+}, 200);
 
 /* ================= game over ================= */
 function showOver(m) {

@@ -132,12 +132,18 @@
       <div class="duel-side">
         <div id="foe-pips" class="pips"></div>
         <div id="turn-banner"></div>
-        <div id="timers"><span id="turn-timer"></span><span id="match-timer"></span></div>
+        <div id="turn-clock"><span id="turn-timer">—</span><div id="turn-bar"><div id="turn-bar-fill"></div></div></div>
+        <div id="match-timer" class="muted tiny"></div>
         <div id="fx-center"></div>
       </div>
     </div>
     <div id="log"></div>
     <div id="bubble-line"></div>
+    <div id="cast-confirm" class="hidden">
+      <span id="cast-confirm-label"></span>
+      <button id="btn-cast" class="primary">Cast ✓</button>
+      <button id="btn-cast-cancel" class="ghost">Cancel</button>
+    </div>
     <div id="hand"></div>
     <div class="duel-row">
       <div class="char">
