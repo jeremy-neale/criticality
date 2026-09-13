@@ -11,7 +11,26 @@ function toast(msg) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 3500);
 }
 
-/* ================= FX — simple animations. Extend here for fancier ones. ================= */
+/* ================= FX — combat animations ================= */
+// Per-card hit effects. To give a card its own unique hit animation, add an entry
+// keyed by its card id (see shared/cards.js). Everything else uses `default`.
+// Signature: (targetEl, amount) => void. Fire-and-forget; never block input.
+//
+// Example:
+//   cinder(targetEl, amount) {
+//     FX.impact(targetEl, amount);
+//     FX.burst(targetEl, amount, '#ff7b3d');
+//   },
+const HIT_FX = {
+  default(targetEl, amount) {
+    FX.impact(targetEl, amount);
+    FX.burst(targetEl, amount);
+  },
+  dotTick(targetEl, amount) {
+    FX.impact(targetEl, amount, { subtle: true });
+  },
+};
+
 const FX = {
   float(panelEl, text, cls) {
     const f = document.createElement('div');
@@ -25,7 +44,85 @@ const FX = {
     const d = document.createElement('div'); d.className = 'fx-flash'; d.textContent = text;
     c.appendChild(d); setTimeout(() => d.remove(), 1300);
   },
-  shake(el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); },
+  shake(el, strong = true) {
+    el.classList.remove('shake', 'shake-soft'); void el.offsetWidth;
+    el.classList.add(strong ? 'shake' : 'shake-soft');
+  },
+  // Card play: fly from the player's side to screen center, hold, then dissolve.
+  playCard(cardId, side) {
+    const layer = $('fx-layer');
+    if (!layer || !CARDS[cardId]) return;
+    const el = cardEl(cardId);
+    el.classList.add('fx-card');
+    layer.appendChild(el);
+    const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+    const startY = side === 'you' ? window.innerHeight * 0.88 : window.innerHeight * 0.12;
+    el.style.transition = 'none';
+    el.style.transform = `translate(${cx}px, ${startY}px) translate(-50%,-50%) scale(.55)`;
+    el.style.opacity = '0';
+    void el.offsetWidth;
+    el.style.transition = 'transform .55s cubic-bezier(.22,1,.36,1), opacity .25s ease-out';
+    el.style.transform = `translate(${cx}px, ${cy}px) translate(-50%,-50%) scale(1)`;
+    el.style.opacity = '1';
+    setTimeout(() => {
+      el.style.transition = 'transform .38s ease-in, opacity .38s ease-in, filter .38s ease-in';
+      el.style.transform = `translate(${cx}px, ${cy}px) translate(-50%,-50%) scale(1.32)`;
+      el.style.opacity = '0';
+      el.style.filter = 'blur(9px) brightness(1.6)';
+      setTimeout(() => el.remove(), 420);
+    }, 700);
+  },
+  // Shared hit entry point — routes to a per-card effect when one exists.
+  hitEffect(cardId, targetEl, amount, isDotTick = false) {
+    if (isDotTick) return HIT_FX.dotTick(targetEl, amount);
+    (HIT_FX[cardId] || HIT_FX.default)(targetEl, amount);
+  },
+  impact(targetEl, amount, { subtle = false } = {}) {
+    const layer = $('fx-layer');
+    if (!layer) return;
+    const r = targetEl.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'fx-impact' + (subtle ? ' subtle' : '');
+    el.style.left = (r.left + r.width / 2) + 'px';
+    el.style.top = (r.top + r.height / 2) + 'px';
+    el.style.setProperty('--s', subtle ? 0.65 : Math.min(1.35, 0.8 + amount / 1200));
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 500);
+  },
+  burst(targetEl, amount, color = '#ffcf7d') {
+    const layer = $('fx-layer');
+    if (!layer) return;
+    const r = targetEl.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const n = Math.min(14, 5 + Math.floor(amount / 120));
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('div');
+      p.className = 'fx-particle';
+      p.style.background = color;
+      p.style.left = cx + 'px'; p.style.top = cy + 'px';
+      layer.appendChild(p);
+      const ang = (Math.PI * 2 * i) / n + Math.random() * .6;
+      const dist = 45 + Math.random() * 70;
+      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+      p.animate([
+        { transform: 'translate(0,0) scale(1)', opacity: 1 },
+        { transform: `translate(${dx}px, ${dy}px) scale(.2)`, opacity: 0 },
+      ], { duration: 450 + Math.random() * 350, easing: 'cubic-bezier(.17,.67,.35,1)' })
+        .onfinish = () => p.remove();
+    }
+  },
+  healGlow(targetEl) {
+    const layer = $('fx-layer');
+    if (!layer) return;
+    const r = targetEl.getBoundingClientRect();
+    const el = document.createElement('div');
+    el.className = 'fx-impact heal';
+    el.style.left = (r.left + r.width / 2) + 'px';
+    el.style.top = (r.top + r.height / 2) + 'px';
+    el.style.setProperty('--s', 0.9);
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 500);
+  },
   log(html) {
     const l = $('log'); const d = document.createElement('div'); d.innerHTML = html;
     l.appendChild(d); l.scrollTop = l.scrollHeight;
@@ -40,6 +137,7 @@ let myName = 'Player 1', lobby = null, snap = null;
 let deck = [], deckSaved = false;
 let redrawMode = false; const redrawSel = new Set();
 let reconnectTries = 0;
+const lastCardBySeat = {}; // match seat -> card id of the most recent play (for hit FX)
 
 /* ================= websocket ================= */
 function wsUrl() { return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host; }
@@ -491,18 +589,27 @@ function handleEvent(e) {
     case 'turn': break; // banner covers it
     case 'card': {
       const nm = CARDS[e.card].name;
-      FX.flash(`${seatName(e.seat)}: ${nm}`);
+      lastCardBySeat[e.seat] = e.card;
+      FX.playCard(e.card, e.seat === myMatchIdx() ? 'you' : 'foe');
       FX.log(`${seatName(e.seat)} played <b>${nm}</b>.`);
       break;
     }
     case 'dmg': {
       const tgt = e.to === myMatchIdx() ? 'you' : 'foe';
+      const orbEl = $(tgt === 'you' ? 'you-orb' : 'foe-orb');
       FX.float(panel(e.to), `−${e.amount}`, 'dmg');
-      if (e.amount >= 800) FX.shake($(tgt === 'you' ? 'you-orb' : 'foe-orb'));
+      FX.hitEffect(e.dot ? null : lastCardBySeat[e.from], orbEl, e.amount, !!e.dot);
+      FX.shake(orbEl, e.amount >= 300);
       FX.log(`${seatName(e.from)} hit ${seatName(e.to)} for <b>${e.amount}</b>${e.dot ? ' (DoT tick)' : ''}${e.shieldUsed ? ' (shield used)' : ''}${e.trapUsed ? ' (trap used)' : ''}.`);
       break;
     }
-    case 'heal': FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.log(`${seatName(e.to)} healed ${e.amount}.`); break;
+    case 'heal': {
+      const orbEl = $(e.to === myMatchIdx() ? 'you-orb' : 'foe-orb');
+      FX.float(panel(e.to), `+${e.amount}`, 'heal');
+      FX.healGlow(orbEl);
+      FX.log(`${seatName(e.to)} healed ${e.amount}.`);
+      break;
+    }
     case 'pass': FX.log(`${seatName(e.seat)} passed.`); break;
     case 'timeout': FX.log(`⏱ ${seatName(e.seat)} ran out of time — auto-pass.`); break;
     case 'redraw': FX.log(`${seatName(e.seat)} redrew ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
