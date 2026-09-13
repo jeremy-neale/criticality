@@ -52,6 +52,15 @@ function makeCode() {
   return c;
 }
 const token = () => crypto.randomBytes(8).toString('hex');
+// Fisher-Yates shuffle; returns a new array, leaves the original untouched.
+function shuffled(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 function send(ws, msg) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
@@ -64,7 +73,7 @@ function lobbyMsg(room) {
     names: room.players.map(p => (p ? p.name : null)),
     hasDeck: room.players.map(p => !!(p && p.deck)),
     ready: room.players.map(p => !!(p && p.ready)),
-    neg: { first: room.neg.first, p2bonus: room.neg.p2bonus, ready: [...room.neg.ready] },
+    neg: { first: room.neg.first, p2bonus: room.neg.p2bonus, shuffle: room.neg.shuffle, ready: [...room.neg.ready] },
     settings: room.settings,
     seats: [0, 1],
   };
@@ -132,7 +141,8 @@ function afterAction(room, events) {
 }
 
 function startMatch(room) {
-  const decks = room.players.map(p => p.deck);
+  let decks = room.players.map(p => p.deck);
+  if (room.neg.shuffle) decks = decks.map(d => shuffled(d)); // agreed in the lobby: random deck order
   const firstSeat = room.neg.first; // room seat that moves first (negotiated in lobby)
   const p2bonus = room.neg.p2bonus;
   const { state, events } = createMatch(decks, firstSeat, p2bonus);
@@ -184,7 +194,7 @@ wss.on('connection', (ws) => {
       room = {
         code, settings: { minutes: RULES.defaultMatchMins },
         players: [{ ws, name, token: token(), deck: null, ready: false, connected: true }, null],
-        neg: { first: 0, p2bonus: RULES.pipStart[1] - RULES.pipStart[0], ready: [false, false] },
+        neg: { first: 0, p2bonus: RULES.pipStart[1] - RULES.pipStart[0], shuffle: false, ready: [false, false] },
         match: null, building: false, turnEndsAt: null, matchEndsAt: null, turnTimer: null, matchTimer: null,
         cleanupTimer: null,
       };
@@ -237,9 +247,10 @@ wss.on('connection', (ws) => {
       let p2bonus = Math.round(Number(m.p2bonus));
       if (!Number.isFinite(p2bonus)) return;
       p2bonus = Math.max(RULES.p2bonusMin, Math.min(RULES.p2bonusMax, p2bonus));
+      const shuffle = m.shuffle === true;
       const n = room.neg;
-      if (n.first === first && n.p2bonus === p2bonus) return; // no-op
-      n.first = first; n.p2bonus = p2bonus;
+      if (n.first === first && n.p2bonus === p2bonus && n.shuffle === shuffle) return; // no-op
+      n.first = first; n.p2bonus = p2bonus; n.shuffle = shuffle;
       n.ready = [false, false];
       broadcastLobby(room);
       return;

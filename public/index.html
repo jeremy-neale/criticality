@@ -53,7 +53,7 @@
       <p id="lobby-wait" class="muted">Waiting for opponent…</p>
       <div id="neg-panel" class="hidden">
         <h3>Negotiate the duel</h3>
-        <p class="sub tiny">Bid for turn order: whoever goes second gets bonus pips. Changing anything un-readies both players — or just hit Ready to play the default (creator first, +2 pips).</p>
+        <p class="sub tiny">Bid for turn order: whoever goes second gets bonus pips. Changing anything un-readies both players — or just hit Ready to play the default (creator first, +2 pips, ordered decks).</p>
         <div class="row"><span>Goes first:</span>
           <button id="neg-first-0" class="toggle"></button>
           <button id="neg-first-1" class="toggle"></button>
@@ -62,6 +62,10 @@
           <button id="neg-minus" class="ghost">−</button>
           <b id="neg-bonus">+2</b>
           <button id="neg-plus" class="ghost">+</button>
+        </div>
+        <div class="row"><span>Deck order:</span>
+          <button id="neg-shuffle-0" class="toggle">Ordered</button>
+          <button id="neg-shuffle-1" class="toggle">Shuffled</button>
         </div>
         <div id="neg-status" class="muted"></div>
         <button id="btn-neg-ready" class="primary">Ready ✓</button>
@@ -74,6 +78,7 @@
   <section id="screen-build" class="screen hidden">
     <div class="topbar"><h2>Build your deck</h2><span id="deck-count" class="pill">0 / 40</span></div>
     <p class="sub">Click a card to add it (max 4 copies). The <b>first 7</b> cards are your starting hand.</p>
+    <p id="build-shuffle-note" class="sub tiny hidden">🎲 Shuffled decks agreed — your deck order will be randomized when the duel starts.</p>
     <h3>Presets</h3>
     <p class="sub tiny">Start from a preset, then edit freely.</p>
     <div class="row" id="preset-row"></div>
@@ -155,9 +160,9 @@
       <div class="duel-side">
         <div class="row" id="duel-actions">
           <button id="btn-pass">Pass</button>
-          <button id="btn-redraw-mode">Redraw…</button>
-          <button id="btn-redraw-go" class="primary hidden">Discard &amp; draw</button>
-          <button id="btn-redraw-cancel" class="ghost hidden">Cancel</button>
+          <button id="btn-discard-mode">Discard…</button>
+          <button id="btn-discard-go" class="primary hidden">Discard</button>
+          <button id="btn-discard-cancel" class="ghost hidden">Cancel</button>
         </div>
         <div id="you-pips" class="pips-big"></div>
       </div>

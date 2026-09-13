@@ -139,11 +139,11 @@ function startTurn(state, events) {
   const p = state.players[si];
   events.push({ k: 'turn', seat: si, turnNum: state.turnNum });
 
-  // Each player's first turn uses their starting pips/hand as dealt; the +2
-  // pips and card draw apply from each player's second turn onward.
+  // Each player's first turn uses their starting pips as dealt; the +2
+  // pips apply from each player's second turn onward. Card draw happens at
+  // the end of each turn (hand refills to 7), never at the start.
   if (p.hasStarted) {
     p.pips = Math.min(RULES.pipCap, p.pips + RULES.pipPerTurn);
-    drawCard(p, events, si);
   }
   p.hasStarted = true;
 
@@ -174,7 +174,8 @@ function startTurn(state, events) {
   tickAuras(p);
 }
 
-// Applies one of: {type:'play', hand:index} | {type:'pass'} | {type:'redraw', hand:[indices]}
+// Applies one of: {type:'play', hand:index} | {type:'pass'} | {type:'discard', hand:[indices]}
+// Discarding is just the move: the hand refills to 7 at the end of the turn.
 // Returns {events} or {error}.
 export function applyAction(state, si, action) {
   const events = [];
@@ -184,16 +185,13 @@ export function applyAction(state, si, action) {
 
   if (action.type === 'pass') {
     events.push({ k: 'pass', seat: si });
-  } else if (action.type === 'redraw') {
+  } else if (action.type === 'discard') {
     const idx = [...new Set(action.hand)].filter(i => Number.isInteger(i) && i >= 0 && i < me.hand.length)
       .sort((a, b) => b - a);
-    if (!idx.length) return { error: 'Select at least one card to redraw.' };
+    if (!idx.length) return { error: 'Select at least one card to discard.' };
     const discarded = idx.map(i => me.hand.splice(i, 1)[0]);
-    events.push({ k: 'redraw', seat: si, count: discarded.length });
-    for (let n = 0; n < discarded.length && me.deck.length; n++) {
-      me.hand.push(me.deck.shift());
-    }
-    events.push({ k: 'draw', to: si, count: discarded.length });
+    events.push({ k: 'discard', seat: si, count: discarded.length });
+    // No immediate draw: the hand refills to 7 at the end of the turn.
   } else if (action.type === 'play') {
     const hi = action.hand;
     if (!Number.isInteger(hi) || hi < 0 || hi >= me.hand.length) return { error: 'Bad card.' };
@@ -328,6 +326,9 @@ export function applyAction(state, si, action) {
   }
 
   if (state.winner === null) {
+    // End of turn: refill the hand that just acted back up to 7 (or as many
+    // as the deck has left). Hands never exceed 7.
+    while (me.hand.length < RULES.handStart && me.deck.length) drawCard(me, events, si);
     state.current = 1 - state.current;
     state.turnNum++;
     startTurn(state, events);

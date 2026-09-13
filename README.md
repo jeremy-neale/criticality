@@ -17,7 +17,7 @@ There's also a standalone **Card library** page on the home screen — all cards
 
 - 10,000 HP · +150% damage · 50% resist · 30 pierce. No fizzle, no crit, no RNG.
 - First player starts with 5 pips, second with 5 + the negotiated bonus (default +2, range +0 to +5). +2 pips at the start of each of your turns (cap 14).
-- Each turn: draw 1 card, then **one** move — play a card, pass, or **redraw** (discard any number of cards, draw that many replacements in deck order).
+- Each turn: **one** move — play a card, pass, or **discard** any number of cards. After your turn your hand refills to 7.
 - Damage = base × (1 + damage% + blades + outgoing aura) × (1 − weakness) × (1 − outgoing debuff) × (1 − max(0, resist − pierce)) × shields/brace (pierceable).
 - **Weakness** (one at a time, on the hitter): scales the *whole* hit including DoT ticks, then consumed. Cannot be pierced.
 - **Shields** queue up; each damage instance (a hit or one DoT tick) uses exactly one shield.

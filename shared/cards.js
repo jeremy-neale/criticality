@@ -139,10 +139,10 @@ export function validateDeck(deck) {
 
 // One-line rules summary for the library page / README.
 export const RULES_SUMMARY = [
-  `${RULES.maxHp.toLocaleString()} HP, +${RULES.dmgBonus * 100}% damage, ${RULES.resist * 100}% resist, ${RULES.basePierce} pierce. NO RNG.`,
+  `${RULES.maxHp.toLocaleString()} HP, +${RULES.dmgBonus * 100}% damage, ${RULES.resist * 100}% resist, ${RULES.basePierce} pierce. NO RNG (unless you both agree to shuffle decks).`,
   `Turn order is negotiated before the duel: first player starts with ${RULES.pipStart[0]} pips, second with ${RULES.pipStart[0]} + the agreed bonus (default +${RULES.pipStart[1] - RULES.pipStart[0]}, range +${RULES.p2bonusMin} to +${RULES.p2bonusMax}). Gain ${RULES.pipPerTurn} pips at the start of each of your turns (cap ${RULES.pipCap}).`,
-  `Decks are ${RULES.deckMin}-${RULES.deckMax} cards, max ${RULES.copiesMax} copies of each card. The first ${RULES.handStart} cards are your starting hand; the rest are drawn in order.`,
-  `Each turn: draw 1 card, then one move — play a card, pass, or redraw (discard any number of cards, draw that many replacements). ${RULES.turnSecs}s per turn.`,
+  `Decks are ${RULES.deckMin}-${RULES.deckMax} cards, max ${RULES.copiesMax} copies of each card. The first ${RULES.handStart} cards are your starting hand; the rest are drawn in order — or shuffled, if you agree to it before the duel.`,
+  `Each turn, one move — play a card, pass, or discard any number of cards. After your turn your hand refills to 7. ${RULES.turnSecs}s per turn.`,
   `Damage = base x (1 + damage% + blades + outgoing aura) x (1 - weakness) x (1 - outgoing debuff) x (1 - max(0, resist - pierce)) x shields/brace (each pierceable) x (1 + traps on the target).`,
   `Traps sit on the target and boost the next hit they take (+40% each, additive). Each damage instance (a hit or one DoT tick) uses up exactly one trap.`,
   `Weakness (one at a time, on the hitter) scales the whole hit including DoT ticks, then is consumed. Cannot be pierced.`,

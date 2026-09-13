@@ -132,16 +132,28 @@ describe('DoTs', () => {
 });
 
 describe('turn structure', () => {
-  it('redraw keeps hand size and draws in deck order', () => {
+  it('discard + end-of-turn refill keeps hand at 7, in deck order', () => {
     const d = deckOf('spark', 'bolt', 'strike', 'blast', 'cataclysm', 'jab', 'hook');
     const { state } = createMatch([d, deckOf()], 0);
     // starting hand: first 7 cards, no draw on turn 1
-    const r = applyAction(state, 0, { type: 'redraw', hand: [0, 1, 2] });
+    const r = applyAction(state, 0, { type: 'discard', hand: [0, 1, 2] });
     assert.ok(!r.error);
-    assert.equal(state.players[0].hand.length, 7);
+    assert.equal(state.players[0].hand.length, 7); // refilled at end of turn
     assert.deepEqual(state.players[0].hand.slice(0, 4), ['blast', 'cataclysm', 'jab', 'hook']);
     assert.deepEqual(state.players[0].hand.slice(4), ['spark', 'spark', 'spark']); // next 3 in order
     assert.equal(state.current, 1); // turn passed
+  });
+  it('playing a card refills the hand to 7 at end of turn', () => {
+    const { state } = createMatch([deckOf('ember'), deckOf()], 0);
+    const r = applyAction(state, 0, { type: 'play', hand: 0 }); // ember costs 0
+    assert.ok(!r.error);
+    assert.equal(state.players[0].hand.length, 7);
+  });
+  it('hand never exceeds 7', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    for (let i = 0; i < 8; i++) pass(state, state.current);
+    assert.ok(state.players[0].hand.length <= 7 && state.players[1].hand.length <= 7);
+    assert.equal(state.players[0].hand.length, 7); // pass keeps a full hand full
   });
   it('pips capped at 14', () => {
     const { state } = createMatch([deckOf(), deckOf()], 0);

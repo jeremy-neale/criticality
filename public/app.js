@@ -135,7 +135,7 @@ const FX = {
 let ws = null, roomSeat = -1, myToken = null, roomCode = null;
 let myName = 'Player 1', lobby = null, snap = null;
 let deck = [], deckSaved = false;
-let redrawMode = false; const redrawSel = new Set();
+let discardMode = false; const discardSel = new Set();
 let reconnectTries = 0;
 const lastCardBySeat = {}; // match seat -> card id of the most recent play (for hit FX)
 
@@ -338,6 +338,8 @@ function renderLobby() {
     $('neg-bonus').textContent = `+${neg.p2bonus}`;
     $('neg-minus').disabled = neg.p2bonus <= RULES.p2bonusMin;
     $('neg-plus').disabled = neg.p2bonus >= RULES.p2bonusMax;
+    $('neg-shuffle-0').classList.toggle('on', !neg.shuffle);
+    $('neg-shuffle-1').classList.toggle('on', !!neg.shuffle);
     $('neg-status').innerHTML =
       `You: ${neg.ready[roomSeat] ? '<b>READY ✓</b>' : 'not ready'} · ` +
       `Opponent: ${neg.ready[1 - roomSeat] ? '<b>READY ✓</b>' : 'not ready'}`;
@@ -346,20 +348,23 @@ function renderLobby() {
   // build-screen side updates
   if (both && lobby.phase === 'build') {
     const foe = 1 - roomSeat;
+    $('build-shuffle-note').classList.toggle('hidden', !lobby.neg.shuffle);
     $('opp-status').innerHTML =
       `Opponent: ${lobby.hasDeck[foe] ? 'deck saved ✓' : 'building…'} · ${lobby.ready[foe] ? '<b>READY ✓</b>' : 'not ready'}`;
     if (lobby.ready[roomSeat]) { $('btn-ready').textContent = 'Unready'; }
     else { $('btn-ready').textContent = 'Ready ✓'; }
   }
 }
-/* negotiation: bid for turn order + second-player bonus pips */
-function sendNeg(first, p2bonus) {
-  if (lobby && lobby.neg) send({ t: 'neg', first, p2bonus });
+/* negotiation: bid for turn order + second-player bonus pips + deck order */
+function sendNeg(first, p2bonus, shuffle) {
+  if (lobby && lobby.neg) send({ t: 'neg', first, p2bonus, shuffle });
 }
-$('neg-first-0').addEventListener('click', () => sendNeg(0, lobby.neg.p2bonus));
-$('neg-first-1').addEventListener('click', () => sendNeg(1, lobby.neg.p2bonus));
-$('neg-minus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus - 1));
-$('neg-plus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus + 1));
+$('neg-first-0').addEventListener('click', () => sendNeg(0, lobby.neg.p2bonus, lobby.neg.shuffle));
+$('neg-first-1').addEventListener('click', () => sendNeg(1, lobby.neg.p2bonus, lobby.neg.shuffle));
+$('neg-minus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus - 1, lobby.neg.shuffle));
+$('neg-plus').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus + 1, lobby.neg.shuffle));
+$('neg-shuffle-0').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus, false));
+$('neg-shuffle-1').addEventListener('click', () => sendNeg(lobby.neg.first, lobby.neg.p2bonus, true));
 $('btn-neg-ready').addEventListener('click', () => {
   if (!lobby || !lobby.neg) return;
   send({ t: lobby.neg.ready[roomSeat] ? 'neg_unready' : 'neg_ready' });
@@ -547,18 +552,18 @@ function renderDuel(events) {
   snap.you.hand.forEach((id, i) => {
     const el = cardEl(id);
     const afford = snap.you.pips >= CARDS[id].cost;
-    if (!afford && !redrawMode) el.classList.add('cant');
-    if (redrawMode && redrawSel.has(i)) el.classList.add('selected');
+    if (!afford && !discardMode) el.classList.add('cant');
+    if (discardMode && discardSel.has(i)) el.classList.add('selected');
     el.setAttribute('role', 'button');
     el.tabIndex = (mine && !snap.winner) ? 0 : -1;
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
     });
-    el.title = afford || redrawMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pip${CARDS[id].cost === 1 ? '' : 's'}`;
+    el.title = afford || discardMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pip${CARDS[id].cost === 1 ? '' : 's'}`;
     el.addEventListener('click', () => {
       if (!mine || snap.winner) return;
-      if (redrawMode) {
-        redrawSel.has(i) ? redrawSel.delete(i) : redrawSel.add(i);
+      if (discardMode) {
+        discardSel.has(i) ? discardSel.delete(i) : discardSel.add(i);
         renderDuel([]);
       } else {
         if (!afford) { toast('Not enough pips.'); return; }
@@ -569,10 +574,10 @@ function renderDuel(events) {
   });
 
   $('btn-pass').disabled = !mine;
-  $('btn-redraw-mode').disabled = !mine;
-  $('btn-redraw-mode').classList.toggle('hidden', redrawMode);
-  $('btn-redraw-go').classList.toggle('hidden', !redrawMode);
-  $('btn-redraw-cancel').classList.toggle('hidden', !redrawMode);
+  $('btn-discard-mode').disabled = !mine;
+  $('btn-discard-mode').classList.toggle('hidden', discardMode);
+  $('btn-discard-go').classList.toggle('hidden', !discardMode);
+  $('btn-discard-cancel').classList.toggle('hidden', !discardMode);
 
   for (const e of events) handleEvent(e);
 }
@@ -612,7 +617,7 @@ function handleEvent(e) {
     }
     case 'pass': FX.log(`${seatName(e.seat)} passed.`); break;
     case 'timeout': FX.log(`⏱ ${seatName(e.seat)} ran out of time — auto-pass.`); break;
-    case 'redraw': FX.log(`${seatName(e.seat)} redrew ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
+    case 'discard': FX.log(`${seatName(e.seat)} discarded ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
     case 'draw': break;
     case 'blade': FX.log(`${seatName(e.to)} gained a +${e.v}% blade.`); break;
     case 'weak': FX.log(`${seatName(e.to)} got −${e.v}% weakness.`); break;
@@ -637,15 +642,15 @@ function handleEvent(e) {
 }
 
 $('btn-pass').addEventListener('click', () => send({ t: 'action', action: { type: 'pass' } }));
-$('btn-redraw-mode').addEventListener('click', () => {
-  redrawMode = true; redrawSel.clear(); renderDuel([]);
-  toast('Select cards, then Discard & draw.');
+$('btn-discard-mode').addEventListener('click', () => {
+  discardMode = true; discardSel.clear(); renderDuel([]);
+  toast('Select cards, then Discard. Your hand refills to 7.');
 });
-$('btn-redraw-cancel').addEventListener('click', () => { redrawMode = false; redrawSel.clear(); renderDuel([]); });
-$('btn-redraw-go').addEventListener('click', () => {
-  if (!redrawSel.size) { toast('Select at least one card.'); return; }
-  send({ t: 'action', action: { type: 'redraw', hand: [...redrawSel] } });
-  redrawMode = false; redrawSel.clear();
+$('btn-discard-cancel').addEventListener('click', () => { discardMode = false; discardSel.clear(); renderDuel([]); });
+$('btn-discard-go').addEventListener('click', () => {
+  if (!discardSel.size) { toast('Select at least one card.'); return; }
+  send({ t: 'action', action: { type: 'discard', hand: [...discardSel] } });
+  discardMode = false; discardSel.clear();
 });
 
 /* ================= timers ================= */
