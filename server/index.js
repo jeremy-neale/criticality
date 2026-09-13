@@ -165,6 +165,10 @@ const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
   ws.isAlive = true;
+  // A malformed frame (e.g. unmasked client frame) raises 'error' on the
+  // socket; without a handler Node treats it as uncaught and kills the
+  // whole process. Never let one bad client take down every room.
+  ws.on('error', () => {});
   ws.on('pong', () => { ws.isAlive = true; });
   let room = null, seat = -1;
 
