@@ -137,6 +137,7 @@ function afterAction(room, events) {
     return;
   }
   armTurnTimer(room);
+  room.turnEndsAt = Date.now() + RULES.turnSecs * 1000; // new turn -> fresh display deadline
   broadcastState(room, events);
 }
 
