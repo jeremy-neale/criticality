@@ -126,7 +126,7 @@ function armTurnTimer(room) {
   }, RULES.turnSecs * 1000);
 }
 
-function afterAction(room, events) {
+function afterAction(room, events, turnAdvanced = true) {
   const st = room.match.state;
   if (st.winner !== null) {
     clearTimers(room);
@@ -136,8 +136,12 @@ function afterAction(room, events) {
     });
     return;
   }
-  armTurnTimer(room);
-  room.turnEndsAt = Date.now() + RULES.turnSecs * 1000; // new turn -> fresh display deadline
+  // Only turn-ending actions (play/pass) restart the turn clock. Discards
+  // are free mid-turn moves, so the original 30s deadline keeps running.
+  if (turnAdvanced) {
+    armTurnTimer(room);
+    room.turnEndsAt = Date.now() + RULES.turnSecs * 1000; // new turn -> fresh display deadline
+  }
   broadcastState(room, events);
 }
 
@@ -318,9 +322,10 @@ wss.on('connection', (ws) => {
       const st = room.match.state;
       // map room seat -> match player index
       const si = st.seats.indexOf(seat);
+      const prevCurrent = st.current;
       const { events, error } = applyAction(st, si, m.action);
       if (error) { send(ws, { t: 'error', msg: error }); return; }
-      afterAction(room, events);
+      afterAction(room, events, st.current !== prevCurrent);
       return;
     }
 

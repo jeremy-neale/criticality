@@ -175,7 +175,9 @@ function startTurn(state, events) {
 }
 
 // Applies one of: {type:'play', hand:index} | {type:'pass'} | {type:'discard', hand:[indices]}
-// Discarding is just the move: the hand refills to 7 at the end of the turn.
+// Discarding is free: it never ends the turn and draws nothing. You can
+// discard any number of cards and still play or pass afterwards.
+// Play and pass end the turn: the hand refills to 7 at the end of the turn.
 // Returns {events} or {error}.
 export function applyAction(state, si, action) {
   const events = [];
@@ -325,9 +327,10 @@ export function applyAction(state, si, action) {
     return { error: 'Unknown action.' };
   }
 
-  if (state.winner === null) {
+  if (state.winner === null && (action.type === 'play' || action.type === 'pass')) {
     // End of turn: refill the hand that just acted back up to 7 (or as many
-    // as the deck has left). Hands never exceed 7.
+    // as the deck has left). Hands never exceed 7. Discarding never ends
+    // the turn, so the player can keep discarding and then play or pass.
     while (me.hand.length < RULES.handStart && me.deck.length) drawCard(me, events, si);
     state.current = 1 - state.current;
     state.turnNum++;

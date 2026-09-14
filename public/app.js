@@ -178,8 +178,7 @@ const FX = {
 let ws = null, roomSeat = -1, myToken = null, roomCode = null;
 let myName = 'Player 1', lobby = null, snap = null;
 let deck = [], deckSaved = false;
-let discardMode = false; const discardSel = new Set();
-let confirmIdx = -1; // hand index of the spell armed for casting (confirm step)
+let confirmIdx = -1; // hand index of the armed card (Cast / Discard / Cancel popup)
 let reconnectTries = 0;
 const lastCardBySeat = {}; // match seat -> card id of the most recent play (for hit FX)
 
@@ -593,10 +592,9 @@ function renderDuel(events) {
   $('turn-banner').textContent = snap.winner ? '' : (mine ? 'YOUR TURN' : "Opponent's turn");
   $('turn-banner').className = mine ? 'you' : 'foe';
 
-  // spell confirm: drop any stale arming, then drive the confirm bar
-  if (!mine || snap.winner || discardMode) confirmIdx = -1;
+  // card popup: drop any stale arming, then drive the Cast/Discard/Cancel bar
+  if (!mine || snap.winner) confirmIdx = -1;
   if (confirmIdx >= snap.you.hand.length) confirmIdx = -1;
-  if (confirmIdx >= 0 && snap.you.pips < CARDS[snap.you.hand[confirmIdx]].cost) confirmIdx = -1;
 
   // hand
   const hand = $('hand'); hand.innerHTML = '';
@@ -604,26 +602,19 @@ function renderDuel(events) {
   snap.you.hand.forEach((id, i) => {
     const el = cardEl(id);
     const afford = snap.you.pips >= CARDS[id].cost;
-    if (!afford && !discardMode) el.classList.add('cant');
-    if (discardMode && discardSel.has(i)) el.classList.add('selected');
+    if (!afford) el.classList.add('cant');
     if (i === confirmIdx) el.classList.add('armed');
     el.setAttribute('role', 'button');
     el.tabIndex = (mine && !snap.winner) ? 0 : -1;
     el.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
     });
-    el.title = afford || discardMode ? CARDS[id].text : `Needs ${CARDS[id].cost} pip${CARDS[id].cost === 1 ? '' : 's'}`;
+    el.title = CARDS[id].text;
     el.addEventListener('click', () => {
       if (!mine || snap.winner) return;
-      if (discardMode) {
-        discardSel.has(i) ? discardSel.delete(i) : discardSel.add(i);
-        renderDuel([]);
-      } else {
-        if (!afford) { toast('Not enough pips.'); return; }
-        // arm the spell; a second tap disarms, Cast confirms
-        confirmIdx = confirmIdx === i ? -1 : i;
-        renderDuel([]);
-      }
+      // arm the card; a second tap disarms. The popup offers Cast/Discard.
+      confirmIdx = confirmIdx === i ? -1 : i;
+      renderDuel([]);
     });
     hand.appendChild(el);
   });
@@ -631,18 +622,17 @@ function renderDuel(events) {
   const cc = $('cast-confirm');
   if (confirmIdx >= 0) {
     const c = CARDS[snap.you.hand[confirmIdx]];
+    const afford = snap.you.pips >= c.cost;
     $('cast-confirm-label').innerHTML =
-      `Cast <b>${c.name}</b> <span class="muted">(${c.cost} pip${c.cost === 1 ? '' : 's'})</span>?`;
+      `<b>${c.name}</b> <span class="muted">(${c.cost} pip${c.cost === 1 ? '' : 's'})</span>`;
+    $('btn-cast').disabled = !afford;
+    $('btn-cast').title = afford ? '' : 'Not enough pips';
     cc.classList.remove('hidden');
   } else {
     cc.classList.add('hidden');
   }
 
   $('btn-pass').disabled = !mine;
-  $('btn-discard-mode').disabled = !mine;
-  $('btn-discard-mode').classList.toggle('hidden', discardMode);
-  $('btn-discard-go').classList.toggle('hidden', !discardMode);
-  $('btn-discard-cancel').classList.toggle('hidden', !discardMode);
 
   for (const e of events) handleEvent(e);
 }
@@ -720,16 +710,12 @@ $('btn-cast').addEventListener('click', () => {
   confirmIdx = -1;
 });
 $('btn-cast-cancel').addEventListener('click', () => { confirmIdx = -1; renderDuel([]); });
-$('btn-discard-mode').addEventListener('click', () => {
+$('btn-discard-one').addEventListener('click', () => {
+  if (confirmIdx < 0 || !isMyTurn() || (snap && snap.winner)) return;
+  // Discarding is free: the turn continues, so you can discard several
+  // cards and still cast or pass afterwards.
+  send({ t: 'action', action: { type: 'discard', hand: [confirmIdx] } });
   confirmIdx = -1;
-  discardMode = true; discardSel.clear(); renderDuel([]);
-  toast('Select cards, then Discard. Your hand refills to 7.');
-});
-$('btn-discard-cancel').addEventListener('click', () => { discardMode = false; discardSel.clear(); renderDuel([]); });
-$('btn-discard-go').addEventListener('click', () => {
-  if (!discardSel.size) { toast('Select at least one card.'); return; }
-  send({ t: 'action', action: { type: 'discard', hand: [...discardSel] } });
-  discardMode = false; discardSel.clear();
 });
 
 /* ================= timers ================= */

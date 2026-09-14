@@ -132,15 +132,22 @@ describe('DoTs', () => {
 });
 
 describe('turn structure', () => {
-  it('discard + end-of-turn refill keeps hand at 7, in deck order', () => {
+  it('discard is free: hand shrinks, turn continues, refill happens on play/pass', () => {
     const d = deckOf('spark', 'bolt', 'strike', 'blast', 'cataclysm', 'jab', 'hook');
     const { state } = createMatch([d, deckOf()], 0);
     // starting hand: first 7 cards, no draw on turn 1
     const r = applyAction(state, 0, { type: 'discard', hand: [0, 1, 2] });
     assert.ok(!r.error);
-    assert.equal(state.players[0].hand.length, 7); // refilled at end of turn
-    assert.deepEqual(state.players[0].hand.slice(0, 4), ['blast', 'cataclysm', 'jab', 'hook']);
-    assert.deepEqual(state.players[0].hand.slice(4), ['spark', 'spark', 'spark']); // next 3 in order
+    assert.equal(state.players[0].hand.length, 4); // no refill yet
+    assert.deepEqual(state.players[0].hand, ['blast', 'cataclysm', 'jab', 'hook']);
+    assert.equal(state.current, 0); // still your turn
+    // now cast one of the remaining cards -> turn ends, hand refills to 7 in deck order
+    state.players[0].pips = 14;
+    const r2 = applyAction(state, 0, { type: 'play', hand: 0 }); // blast (4 pips)
+    assert.ok(!r2.error);
+    assert.equal(state.players[0].hand.length, 7);
+    assert.deepEqual(state.players[0].hand.slice(0, 3), ['cataclysm', 'jab', 'hook']);
+    assert.deepEqual(state.players[0].hand.slice(3), ['spark', 'spark', 'spark', 'spark']); // next 4 in order
     assert.equal(state.current, 1); // turn passed
   });
   it('playing a card refills the hand to 7 at end of turn', () => {
