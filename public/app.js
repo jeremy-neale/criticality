@@ -31,6 +31,14 @@ const HIT_FX = {
   },
 };
 
+// Dissolve / particle theme per card kind (shared/cards.js kinds).
+const KIND_FX_COLOR = {
+  hit: '#ff9a3d', dot: '#ff5f2e', hot: '#5fe08a', cleanse: '#7dffb0',
+  shield: '#6db7ff', weak: '#b06dff', blade: '#ffd76d', pierce: '#ffe9a8',
+  aura: '#ffc46d', trap: '#c77dff', expose: '#ff7dd2', waura: '#9a6dff',
+  bubble: '#7de8ff', sacrifice: '#ff5d5d',
+};
+
 const FX = {
   float(panelEl, text, cls) {
     const f = document.createElement('div');
@@ -48,29 +56,43 @@ const FX = {
     el.classList.remove('shake', 'shake-soft'); void el.offsetWidth;
     el.classList.add(strong ? 'shake' : 'shake-soft');
   },
-  // Card play: fly from the player's side to screen center, hold, then dissolve.
+  // Card play, Hearthstone-style: arc fly-in to board center, golden showcase
+  // with the card name, then a slam beat where it dissolves into kind-themed
+  // particles + a shockwave. Hit visuals elsewhere sync to the slam via cardAt.
   playCard(cardId, side) {
     const layer = $('fx-layer');
-    if (!layer || !CARDS[cardId]) return;
+    const def = CARDS[cardId];
+    if (!layer || !def) return;
+    FX.cardAt = Date.now();
+    const color = KIND_FX_COLOR[def.kind] || '#ffcf7d';
     const el = cardEl(cardId);
     el.classList.add('fx-card');
     layer.appendChild(el);
-    const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
-    const startY = side === 'you' ? window.innerHeight * 0.88 : window.innerHeight * 0.12;
-    el.style.transition = 'none';
-    el.style.transform = `translate(${cx}px, ${startY}px) translate(-50%,-50%) scale(.55)`;
-    el.style.opacity = '0';
-    void el.offsetWidth;
-    el.style.transition = 'transform .55s cubic-bezier(.22,1,.36,1), opacity .25s ease-out';
-    el.style.transform = `translate(${cx}px, ${cy}px) translate(-50%,-50%) scale(1)`;
-    el.style.opacity = '1';
-    setTimeout(() => {
-      el.style.transition = 'transform .38s ease-in, opacity .38s ease-in, filter .38s ease-in';
-      el.style.transform = `translate(${cx}px, ${cy}px) translate(-50%,-50%) scale(1.32)`;
-      el.style.opacity = '0';
-      el.style.filter = 'blur(9px) brightness(1.6)';
-      setTimeout(() => el.remove(), 420);
-    }, 700);
+    const cx = window.innerWidth / 2, cy = window.innerHeight * 0.44;
+    const startY = side === 'you' ? window.innerHeight * 0.94 : window.innerHeight * 0.06;
+    const midY = (startY + cy) / 2 - 70; // arc lift
+    const at = (x, y, s) => `translate(${x}px, ${y}px) translate(-50%,-50%) scale(${s})`;
+    const fly = el.animate([
+      { transform: at(cx, startY, 0.5), opacity: 0 },
+      { transform: at(cx, midY, 0.82), opacity: 1, offset: 0.55 },
+      { transform: at(cx, cy, 1.18), opacity: 1 },
+    ], { duration: 620, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' });
+    fly.onfinish = () => {
+      el.classList.add('showcase');
+      el.style.filter = `drop-shadow(0 0 26px ${color})`;
+      FX.flash(def.name);
+      setTimeout(() => {
+        // Slam: punch down, then dissolve upward into themed particles.
+        el.animate([
+          { transform: at(cx, cy, 1.18), opacity: 1, filter: 'blur(0px)', offset: 0 },
+          { transform: at(cx, cy + 16, 1.36), opacity: 1, filter: 'blur(0px)', offset: 0.38 },
+          { transform: at(cx, cy - 8, 1.02), opacity: 0, filter: 'blur(10px) brightness(1.7)', offset: 1 },
+        ], { duration: 420, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();
+        FX.shockwave(cx, cy, color);
+        FX.burstAt(cx, cy, 26, color, 700);
+        FX.burstAt(cx, cy, 10, '#ffffff', 500);
+      }, 620);
+    };
   },
   // Shared hit entry point — routes to a per-card effect when one exists.
   hitEffect(cardId, targetEl, amount, isDotTick = false) {
@@ -90,26 +112,47 @@ const FX = {
     setTimeout(() => el.remove(), 500);
   },
   burst(targetEl, amount, color = '#ffcf7d') {
+    const r = targetEl.getBoundingClientRect();
+    FX.burstAt(r.left + r.width / 2, r.top + r.height / 2,
+      Math.min(14, 5 + Math.floor(amount / 120)), color, 550);
+  },
+  burstAt(cx, cy, n, color = '#ffcf7d', dur = 550) {
     const layer = $('fx-layer');
     if (!layer) return;
-    const r = targetEl.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const n = Math.min(14, 5 + Math.floor(amount / 120));
     for (let i = 0; i < n; i++) {
       const p = document.createElement('div');
       p.className = 'fx-particle';
       p.style.background = color;
+      p.style.boxShadow = `0 0 8px ${color}`;
       p.style.left = cx + 'px'; p.style.top = cy + 'px';
       layer.appendChild(p);
       const ang = (Math.PI * 2 * i) / n + Math.random() * .6;
-      const dist = 45 + Math.random() * 70;
-      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+      const dist = 45 + Math.random() * 85;
+      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist - 18;
       p.animate([
         { transform: 'translate(0,0) scale(1)', opacity: 1 },
         { transform: `translate(${dx}px, ${dy}px) scale(.2)`, opacity: 0 },
-      ], { duration: 450 + Math.random() * 350, easing: 'cubic-bezier(.17,.67,.35,1)' })
+      ], { duration: dur + Math.random() * 350, easing: 'cubic-bezier(.17,.67,.35,1)' })
         .onfinish = () => p.remove();
     }
+  },
+  shockwave(cx, cy, color = '#ffcf7d') {
+    const layer = $('fx-layer');
+    if (!layer) return;
+    const el = document.createElement('div');
+    el.className = 'fx-shockwave';
+    el.style.left = cx + 'px'; el.style.top = cy + 'px';
+    el.style.borderColor = color;
+    el.style.boxShadow = `0 0 18px ${color}`;
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 650);
+  },
+  screenShake() {
+    const s = $('screen-duel');
+    if (!s) return;
+    s.classList.remove('screen-shake'); void s.offsetWidth;
+    s.classList.add('screen-shake');
+    setTimeout(() => s.classList.remove('screen-shake'), 400);
   },
   healGlow(targetEl) {
     const layer = $('fx-layer');
@@ -624,16 +667,23 @@ function handleEvent(e) {
     case 'dmg': {
       const tgt = e.to === myMatchIdx() ? 'you' : 'foe';
       const orbEl = $(tgt === 'you' ? 'you-orb' : 'foe-orb');
-      FX.float(panel(e.to), `−${e.amount}`, 'dmg');
-      FX.hitEffect(e.dot ? null : lastCardBySeat[e.from], orbEl, e.amount, !!e.dot);
-      FX.shake(orbEl, e.amount >= 300);
+      // Sync the impact to the card's slam beat when a card was just played.
+      const synced = !e.dot && (Date.now() - (FX.cardAt || 0) < 1600);
+      const fire = () => {
+        FX.float(panel(e.to), `−${e.amount}`, 'dmg');
+        FX.hitEffect(e.dot ? null : lastCardBySeat[e.from], orbEl, e.amount, !!e.dot);
+        FX.shake(orbEl, e.amount >= 300);
+        if (e.amount >= 500) FX.screenShake();
+      };
+      if (synced) setTimeout(fire, 1180); else fire();
       FX.log(`${seatName(e.from)} hit ${seatName(e.to)} for <b>${e.amount}</b>${e.dot ? ' (DoT tick)' : ''}${e.shieldUsed ? ' (shield used)' : ''}${e.trapUsed ? ' (trap used)' : ''}.`);
       break;
     }
     case 'heal': {
       const orbEl = $(e.to === myMatchIdx() ? 'you-orb' : 'foe-orb');
-      FX.float(panel(e.to), `+${e.amount}`, 'heal');
-      FX.healGlow(orbEl);
+      const synced = Date.now() - (FX.cardAt || 0) < 1600;
+      const fire = () => { FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.healGlow(orbEl); };
+      if (synced) setTimeout(fire, 1180); else fire();
       FX.log(`${seatName(e.to)} healed ${e.amount}.`);
       break;
     }
