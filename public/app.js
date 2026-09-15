@@ -749,9 +749,9 @@ setInterval(() => {
     fill.style.width = Math.max(0, Math.min(100, (s / RULES.turnSecs) * 100)).toFixed(1) + '%';
     clock.classList.toggle('low', s <= 10 && s > 5);
     clock.classList.toggle('crit', s <= 5);
-    // tick each whole second of the last 5
+    // tick each whole second of the last 5 (5,4,3,2,1 — never at 0)
     const whole = Math.ceil(s);
-    if (s <= 5 && whole !== lastTickSec && !$('screen-duel').classList.contains('hidden') && !(snap && snap.winner)) {
+    if (s <= 5 && whole >= 1 && whole !== lastTickSec && !$('screen-duel').classList.contains('hidden') && !(snap && snap.winner)) {
       lastTickSec = whole;
       SFX.tick();
     }
@@ -775,8 +775,23 @@ document.addEventListener('click', (ev) => {
   const el = $(id);
   if (!el) return;
   el.value = SFX.vol[kind];
-  el.addEventListener('input', () => SFX.setVol(kind, Number(el.value)));
+  el.addEventListener('input', () => { SFX.setVol(kind, Number(el.value)); paintMute(); });
 });
+// Mute toggle: zeroes master, remembers the previous level, restores on unmute.
+const paintMute = () => {
+  const b = $('btn-mute');
+  if (b) b.textContent = SFX.vol.master === 0 ? 'Unmute' : 'Mute';
+};
+if ($('btn-mute')) {
+  paintMute();
+  $('btn-mute').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    SFX.unlock();
+    SFX.toggleMute();
+    $('vol-master').value = SFX.vol.master;
+    paintMute();
+  });
+}
 
 /* ================= game over ================= */
 function showOver(m) {

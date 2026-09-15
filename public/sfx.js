@@ -72,6 +72,16 @@ export const SFX = {
     this._applyVols();
   },
 
+  // Mute toggle: zeroes master but remembers the previous level to restore.
+  toggleMute() {
+    if (this.vol.master > 0) {
+      this._preMute = this.vol.master;
+      this.setVol('master', 0);
+    } else {
+      this.setVol('master', this._preMute > 0 ? this._preMute : 0.8);
+    }
+  },
+
   _tone({ f = 440, f1 = null, type = 'sine', dur = 0.2, vol = 0.2, at = 0 }) {
     if (!this._ok()) return;
     try {
@@ -144,7 +154,8 @@ export const SFX = {
   /* ---- background music ---- */
 
   _ensureMusic() {
-    if (this._musicEl || !this._ctx) return false;
+    if (this._musicEl) return true; // already built — allow restart after pause
+    if (!this._ctx) return false;
     try {
       const el = document.createElement('audio');
       el.src = 'audio/duel-theme.mp3';
