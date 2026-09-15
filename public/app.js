@@ -1,6 +1,8 @@
 // Duel Simulator client. Talks to the server over WebSocket; the server is authoritative.
 import { CARDS, CARD_IDS, RULES, RULES_SUMMARY, GLOSSARY, validateDeck } from '../shared/cards.js';
 import { PRESETS } from '../shared/presets.js';
+import { SFX } from './sfx.js';
+window.SFX = SFX; // exposed for playtest verification
 
 const $ = (id) => document.getElementById(id);
 const SCREENS = ['screen-home', 'screen-library', 'screen-lobby', 'screen-build', 'screen-duel', 'screen-over'];
@@ -23,10 +25,12 @@ function toast(msg) {
 //   },
 const HIT_FX = {
   default(targetEl, amount) {
+    SFX.hit(amount);
     FX.impact(targetEl, amount);
     FX.burst(targetEl, amount);
   },
   dotTick(targetEl, amount) {
+    SFX.dot();
     FX.impact(targetEl, amount, { subtle: true });
   },
 };
@@ -64,6 +68,7 @@ const FX = {
     const def = CARDS[cardId];
     if (!layer || !def) return;
     FX.cardAt = Date.now();
+    SFX.whoosh();
     const color = KIND_FX_COLOR[def.kind] || '#ffcf7d';
     const el = cardEl(cardId);
     el.classList.add('fx-card');
@@ -88,6 +93,7 @@ const FX = {
           { transform: at(cx, cy + 16, 1.36), opacity: 1, filter: 'blur(0px)', offset: 0.38 },
           { transform: at(cx, cy - 8, 1.02), opacity: 0, filter: 'blur(10px) brightness(1.7)', offset: 1 },
         ], { duration: 420, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();
+        SFX.slam();
         FX.shockwave(cx, cy, color);
         FX.burstAt(cx, cy, 26, color, 700);
         FX.burstAt(cx, cy, 10, '#ffffff', 500);
@@ -318,6 +324,7 @@ function renderLibrary() {
 
 document.querySelectorAll('[data-nav]').forEach(b => b.addEventListener('click', () => {
   if (ws) { try { ws.close(); } catch {} ws = null; }
+  SFX.musicStop();
   roomCode = null; myToken = null; roomSeat = -1; lobby = null; snap = null;
   show('screen-home');
 }));
@@ -643,6 +650,7 @@ function handleEvent(e) {
     case 'start': {
       const mi = snap.seats.indexOf(e.first);
       const p2b = e.p2bonus ?? (RULES.pipStart[1] - RULES.pipStart[0]);
+      SFX.musicStart();
       FX.log(`⚔️ Duel start — <b>${seatName(mi)}</b> ${seatName(mi) === 'You' ? 'move' : 'moves'} first. Second player +${p2b} pips.`);
       break;
     }
@@ -672,14 +680,14 @@ function handleEvent(e) {
     case 'heal': {
       const orbEl = $(e.to === myMatchIdx() ? 'you-orb' : 'foe-orb');
       const synced = Date.now() - (FX.cardAt || 0) < 1600;
-      const fire = () => { FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.healGlow(orbEl); };
+      const fire = () => { FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.healGlow(orbEl); SFX.heal(); };
       if (synced) setTimeout(fire, 1180); else fire();
       FX.log(`${seatName(e.to)} healed ${e.amount}.`);
       break;
     }
     case 'pass': FX.log(`${seatName(e.seat)} passed.`); break;
     case 'timeout': FX.log(`⏱ ${seatName(e.seat)} ran out of time — auto-pass.`); break;
-    case 'discard': FX.log(`${seatName(e.seat)} discarded ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
+    case 'discard': SFX.flick(); FX.log(`${seatName(e.seat)} discarded ${e.count} card${e.count > 1 ? 's' : ''}.`); break;
     case 'draw': break;
     case 'blade': FX.log(`${seatName(e.to)} gained a +${e.v}% blade.`); break;
     case 'weak': FX.log(`${seatName(e.to)} got −${e.v}% weakness.`); break;
@@ -720,6 +728,7 @@ $('btn-discard-one').addEventListener('click', () => {
 
 /* ================= timers ================= */
 let timerEnds = { turn: null, match: null };
+let lastTickSec = -1;
 function renderTimers(turnEndsAt, matchEndsAt) { timerEnds = { turn: turnEndsAt, match: matchEndsAt }; }
 setInterval(() => {
   const fmt = (ms) => {
@@ -740,12 +749,38 @@ setInterval(() => {
     fill.style.width = Math.max(0, Math.min(100, (s / RULES.turnSecs) * 100)).toFixed(1) + '%';
     clock.classList.toggle('low', s <= 10 && s > 5);
     clock.classList.toggle('crit', s <= 5);
+    // tick each whole second of the last 5
+    const whole = Math.ceil(s);
+    if (s <= 5 && whole !== lastTickSec && !$('screen-duel').classList.contains('hidden') && !(snap && snap.winner)) {
+      lastTickSec = whole;
+      SFX.tick();
+    }
+    if (s > 5) lastTickSec = -1;
   }
   $('match-timer').textContent = '⏳ ' + fmt(timerEnds.match ? timerEnds.match - now : null);
 }, 200);
 
+/* ================= sound menu ================= */
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => SFX.unlock(), { once: true }));
+$('btn-sound').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  SFX.unlock();
+  $('sound-menu').classList.toggle('hidden');
+});
+document.addEventListener('click', (ev) => {
+  const m = $('sound-menu');
+  if (m && !m.classList.contains('hidden') && !ev.target.closest('#sound-wrap')) m.classList.add('hidden');
+});
+[['vol-master', 'master'], ['vol-sfx', 'sfx'], ['vol-music', 'music']].forEach(([id, kind]) => {
+  const el = $(id);
+  if (!el) return;
+  el.value = SFX.vol[kind];
+  el.addEventListener('input', () => SFX.setVol(kind, Number(el.value)));
+});
+
 /* ================= game over ================= */
 function showOver(m) {
+  SFX.musicStop();
   const t = m.winner === 'you' ? '🏆 You win!' : m.winner === 'foe' ? '💀 You lose' : '🤝 Draw';
   $('over-title').textContent = t;
   $('over-sub').textContent = m.reason === 'time' ? 'Time expired — higher HP wins.' : 'Knockout.';

@@ -134,6 +134,15 @@
         <div id="turn-banner"></div>
         <div id="turn-clock"><span id="turn-timer">—</span><div id="turn-bar"><div id="turn-bar-fill"></div></div></div>
         <div id="match-timer" class="muted tiny"></div>
+        <div id="sound-wrap">
+          <button id="btn-sound" class="ghost" title="Sound settings">🔊</button>
+          <div id="sound-menu" class="hidden">
+            <label>Master <input type="range" id="vol-master" min="0" max="1" step="0.01"></label>
+            <label>Effects <input type="range" id="vol-sfx" min="0" max="1" step="0.01"></label>
+            <label>Music <input type="range" id="vol-music" min="0" max="1" step="0.01"></label>
+            <div class="tiny muted">Music: “Exotic Battle” — Kevin MacLeod (incompetech.com), CC-BY 4.0</div>
+          </div>
+        </div>
         <div id="fx-center"></div>
       </div>
     </div>
