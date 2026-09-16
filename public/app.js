@@ -770,7 +770,7 @@ function handleEvent(e) {
     case 'brace': FX.log(`${seatName(e.to)} gained −${e.v}% brace.${replNote(e)}`); break;
     case 'expose': FX.log(`${seatName(e.to)} is exposed: +${e.v}% incoming damage aura.${replNote(e)}`); break;
     case 'wAura': FX.log(`${seatName(e.to)} got a −${e.v}% weakness aura.${replNote(e)}`); break;
-    case 'bubble': FX.log(`${seatName(e.seat)} set the bubble (+${RULES.bubblePct}% their spells).`); break;
+    case 'bubble': FX.log(`${seatName(e.seat)} set the bubble (+${RULES.bubblePct}% ${e.seat === myMatchIdx() ? 'your' : 'their'} spells).`); break;
     case 'outBuff': FX.log(`${seatName(e.to)} gained +${e.v}% outgoing aura.${replNote(e)}`); break;
     case 'dot': FX.log(`${seatName(e.to)} is burning (${e.tick}/turn × ${e.rounds}).`); break;
     case 'hot': FX.log(`${seatName(e.to)} is regenerating (${e.heal}/turn × ${e.rounds}).`); break;
