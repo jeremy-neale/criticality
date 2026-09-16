@@ -86,10 +86,6 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
   text-decoration: underline dotted; text-underline-offset: 2px; }
 .kw:hover { color: #fff; }
 
-#bubble-line { text-align: center; font-size: 13px; padding: 4px 0 2px; color: var(--acc2); }
-#bubble-line.foe { color: var(--bad); }
-#bubble-line b { font-weight: 800; }
-
 /* duel */
 .duel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .duel-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
@@ -103,6 +99,16 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
   transition: stroke-dashoffset .5s ease; }
 .foe-orb .ring-fg { stroke: #ff6b6b; }
 .you-orb .ring-fg { stroke: #51cf66; }
+/* aura ring: one aura slot per player, colored by kind (green = good, red = bad) */
+.ring-aura { fill: none; stroke-width: 3.5; opacity: .95;
+  transition: stroke .4s ease; animation: aura-pulse 2.2s ease-in-out infinite; }
+@keyframes aura-pulse { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+/* bubble flame on the holder's orb */
+.orb-flame { position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  font-size: 22px; z-index: 4; animation: flame-flick .5s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 6px #ff9a3d); }
+@keyframes flame-flick { from { transform: translateX(-50%) scale(1) rotate(-4deg); }
+  to { transform: translateX(-50%) scale(1.14) rotate(4deg); } }
 .hp-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 19px; text-shadow: 0 1px 4px #000; }
 .orb-icon { position: absolute; background: #17132b; border: 2px solid #453a7d; border-radius: 999px;
@@ -187,6 +193,14 @@ input.code { width: 90px; text-transform: uppercase; letter-spacing: 2px; text-a
 .float { position: absolute; font-weight: 800; font-size: 20px; animation: fadeup 1.4s ease forwards;
   pointer-events: none; z-index: 5; }
 .float.dmg { color: var(--bad); } .float.heal { color: var(--good); }
+/* card-play buff sequence: floating "label ×N.NN" tags during the showcase */
+.fx-mod { position: fixed; transform: translate(-50%, -50%); font-weight: 800; font-size: 17px;
+  pointer-events: none; z-index: 42; text-shadow: 0 2px 6px #000; white-space: nowrap;
+  animation: modrise 1s ease forwards; }
+.fx-mod.up { color: #7dffb0; } .fx-mod.down { color: #ff8f8f; }
+@keyframes modrise { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.8); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+  100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
 /* combat FX: full-screen layer for card flights, impacts, particles */
 #fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 40; overflow: hidden; }
 .fx-card { position: fixed; left: 0; top: 0; width: min(150px, 42vw); margin: 0;

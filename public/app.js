@@ -61,13 +61,34 @@ const FX = {
     el.classList.add(strong ? 'shake' : 'shake-soft');
   },
   // Card play, Hearthstone-style: arc fly-in to board center, golden showcase
-  // with the card name, then a slam beat where it dissolves into kind-themed
-  // particles + a shockwave. Hit visuals elsewhere sync to the slam via cardAt.
+  // with the card name, a buff sequence (each modifier flashes its multiplier
+  // while the card grows/shrinks), then a slam beat where it dissolves into
+  // kind-themed particles + a shockwave. Synced hit/heal visuals wait in
+  // pendingFires and land exactly on the slam beat.
+  pendingFires: [],
+  fireSynced(fn) { FX.pendingFires.push(fn); },
+  drainFires() { const f = FX.pendingFires.splice(0); for (const fn of f) { try { fn(); } catch (e) {} } },
+  modsArmed: false,
+  queuedMods: null,
+  modTag(cx, cy, m, i) {
+    const layer = $('fx-layer');
+    if (!layer) return;
+    const el = document.createElement('div');
+    el.className = 'fx-mod ' + m.side;
+    el.textContent = `${m.label} ${fmtMult(m.mult)}`;
+    el.style.left = cx + 'px';
+    el.style.top = (cy - 96 - i * 24) + 'px';
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 1050);
+  },
   playCard(cardId, side) {
     const layer = $('fx-layer');
     const def = CARDS[cardId];
     if (!layer || !def) return;
     FX.cardAt = Date.now();
+    FX.drainFires(); // safety: drop orphans from a previous card
+    FX.modsArmed = false;
+    FX.queuedMods = null;
     SFX.whoosh();
     const color = KIND_FX_COLOR[def.kind] || '#ffcf7d';
     const el = cardEl(cardId);
@@ -86,18 +107,35 @@ const FX = {
       el.classList.add('showcase');
       el.style.filter = `drop-shadow(0 0 26px ${color})`;
       FX.flash(def.name);
+      // Buff sequence: the hit's modifiers, in computation order. The card
+      // grows for damage-up mods and shrinks for damage-down mods.
+      const mods = (FX.queuedMods || []).filter(m => Math.abs(m.mult - 1) > 0.001);
+      let scale = 1.18;
+      mods.forEach((m, i) => {
+        setTimeout(() => {
+          FX.modTag(cx, cy, m, i);
+          scale *= m.side === 'up' ? 1.1 : 0.92;
+          el.animate([
+            { transform: at(cx, cy, scale / 1.06) },
+            { transform: at(cx, cy, scale) },
+          ], { duration: 190, easing: 'ease-out', fill: 'forwards' });
+          if (m.side === 'up') SFX.buffUp(); else SFX.buffDown();
+        }, 240 + i * 210);
+      });
+      const showDur = Math.max(620, 300 + mods.length * 210);
       setTimeout(() => {
         // Slam: punch down, then dissolve upward into themed particles.
         el.animate([
-          { transform: at(cx, cy, 1.18), opacity: 1, filter: 'blur(0px)', offset: 0 },
-          { transform: at(cx, cy + 16, 1.36), opacity: 1, filter: 'blur(0px)', offset: 0.38 },
-          { transform: at(cx, cy - 8, 1.02), opacity: 0, filter: 'blur(10px) brightness(1.7)', offset: 1 },
+          { transform: at(cx, cy, scale), opacity: 1, filter: 'blur(0px)', offset: 0 },
+          { transform: at(cx, cy + 16, scale * 1.15), opacity: 1, filter: 'blur(0px)', offset: 0.38 },
+          { transform: at(cx, cy - 8, scale * 0.86), opacity: 0, filter: 'blur(10px) brightness(1.7)', offset: 1 },
         ], { duration: 420, easing: 'ease-in', fill: 'forwards' }).onfinish = () => el.remove();
         SFX.slam();
         FX.shockwave(cx, cy, color);
         FX.burstAt(cx, cy, 26, color, 700);
         FX.burstAt(cx, cy, 10, '#ffffff', 500);
-      }, 620);
+        FX.drainFires();
+      }, showDur);
     };
   },
   // Shared hit entry point — routes to a per-card effect when one exists.
@@ -511,14 +549,32 @@ const isMyTurn = () => snap && snap.currentSeat === myMatchIdx();
 function chipsFor(p) {
   const c = [];
   if (p.pierceBlade) c.push(`<span class="chip b">➹ pierce+30</span>`);
-  if (p.outAura) c.push(`<span class="chip d">−${p.outAura.v}% out (${p.outAura.rounds})</span>`);
-  if (p.wAura) c.push(`<span class="chip d">−${p.wAura.v}% weak aura (${p.wAura.rounds})</span>`);
-  if (p.inAura && p.inAura.v < 0) c.push(`<span class="chip g">−${-p.inAura.v}% brace (${p.inAura.rounds})</span>`);
-  if (p.inAura && p.inAura.v > 0) c.push(`<span class="chip d">+${p.inAura.v}% exposed (${p.inAura.rounds})</span>`);
-  if (p.outBuff) c.push(`<span class="chip b">+${p.outBuff.v}% out (${p.outBuff.rounds})</span>`);
   for (const d of p.dots) c.push(`<span class="chip d">🔥 ${d.tick}×${d.rounds}</span>`);
   for (const h of p.hots) c.push(`<span class="chip g">💚 ${h.heal}×${h.rounds}</span>`);
   return c.join('');
+}
+
+// Aura ring colors: green hues = good for the holder, red hues = bad.
+const AURA_STYLE = {
+  outBuff:   { color: '#34d399', name: 'damage aura' },   // emerald
+  inBrace:   { color: '#22d3ee', name: 'brace' },         // aqua
+  outDebuff: { color: '#ef4444', name: 'outgoing aura' }, // red
+  weakAura:  { color: '#e11d48', name: 'weakness aura' }, // crimson
+  exposed:   { color: '#f97316', name: 'exposed' },      // orange
+};
+function auraStyle(a) {
+  if (!a) return null;
+  if (a.kind === 'inAura') return a.v < 0 ? AURA_STYLE.inBrace : AURA_STYLE.exposed;
+  return AURA_STYLE[a.kind] || null;
+}
+const AURA_KIND_NAME = { outBuff: 'damage aura', outDebuff: 'outgoing aura', weakAura: 'weakness aura', inAura: 'incoming aura' };
+const replNote = (e) => e.replaced ? ` (${AURA_KIND_NAME[e.replaced] || 'aura'} replaced)` : '';
+function fmtMult(x) { return '×' + parseFloat(x.toFixed(2)).toString(); }
+function auraText(a) {
+  if (!a) return '';
+  const st = auraStyle(a);
+  const signed = a.v > 0 ? `+${a.v}%` : `−${-a.v}%`;
+  return `${st ? st.name : 'aura'}: ${signed} (${a.rounds} round${a.rounds === 1 ? '' : 's'})`;
 }
 
 const RING_C = 2 * Math.PI * 52;
@@ -552,6 +608,17 @@ function renderOrb(prefix, p, name) {
     p.traps.length ? `🪤${p.traps.length > 1 ? '×' + p.traps.length : ''}` : '',
     p.traps.length ? `Traps: ${p.traps.map(t => '+' + t + '%').join(', ')} — boost the next hit(s) taken` : '');
   $(prefix + '-status').innerHTML = chipsFor(p);
+  // aura ring: one slot per player, colored by kind (green = good, red = bad)
+  const ring = $(prefix + '-auraring');
+  const st = auraStyle(p.aura);
+  if (ring) {
+    ring.classList.toggle('hidden', !st);
+    if (st) {
+      ring.style.stroke = st.color;
+      ring.style.filter = `drop-shadow(0 0 5px ${st.color})`;
+      ring.innerHTML = `<title>${auraText(p.aura)}</title>`;
+    }
+  }
   const pipLabel = prefix === 'you' ? 'You' : 'Foe';
   $(prefix + '-pips').textContent = `${pipLabel} ⚡ ${p.pips}`;
   $(prefix + '-pips').title = `${pipLabel === 'You' ? 'Your' : "Foe's"} pips`;
@@ -584,15 +651,15 @@ function renderDuel(events) {
   $('deck-next').textContent = snap.you.deckNext && snap.you.deckNext.length
     ? 'Next: ' + CARDS[snap.you.deckNext[0]].name : 'Next: —';
 
-  // arena bubble indicator
-  const bl = $('bubble-line');
-  if (snap.bubble) {
-    const mine = snap.bubble.owner === 'you';
-    bl.innerHTML = `🫧 <b>Bubble</b>: +${RULES.bubblePct}% ${mine ? 'your' : "foe's"} spells`;
-    bl.classList.toggle('foe', !mine);
-  } else {
-    bl.innerHTML = `🫧 <b>Bubble</b>: <span class="muted">none — play Bubble to set it</span>`;
-    bl.classList.remove('foe');
+  // bubble flame on the holder's orb (replaces the old text bar)
+  const bubOwner = snap.bubble ? snap.bubble.owner : null;
+  for (const [pfx, who] of [['foe', 'foe'], ['you', 'you']]) {
+    const fl = $(pfx + '-flame');
+    if (fl) {
+      const on = bubOwner === who;
+      fl.classList.toggle('hidden', !on);
+      fl.title = on ? `Bubble: +${RULES.bubblePct}% ${who === 'you' ? 'your' : "foe's"} spells` : '';
+    }
   }
 
   const mine = isMyTurn();
@@ -673,7 +740,11 @@ function handleEvent(e) {
         FX.shake(orbEl, e.amount >= 300);
         if (e.amount >= 500) FX.screenShake();
       };
-      if (synced) setTimeout(fire, 1180); else fire();
+      if (synced) {
+        FX.fireSynced(fire);
+        // the first hit's modifiers drive the card's buff sequence
+        if (e.mods && !FX.modsArmed) { FX.modsArmed = true; FX.queuedMods = e.mods; }
+      } else fire();
       FX.log(`${seatName(e.from)} hit ${seatName(e.to)} for <b>${e.amount}</b>${e.dot ? ' (DoT tick)' : ''}${e.shieldUsed ? ' (shield used)' : ''}${e.trapUsed ? ' (trap used)' : ''}.`);
       break;
     }
@@ -681,7 +752,7 @@ function handleEvent(e) {
       const orbEl = $(e.to === myMatchIdx() ? 'you-orb' : 'foe-orb');
       const synced = Date.now() - (FX.cardAt || 0) < 1600;
       const fire = () => { FX.float(panel(e.to), `+${e.amount}`, 'heal'); FX.healGlow(orbEl); SFX.heal(); };
-      if (synced) setTimeout(fire, 1180); else fire();
+      if (synced) FX.fireSynced(fire); else fire();
       FX.log(`${seatName(e.to)} healed ${e.amount}.`);
       break;
     }
@@ -694,12 +765,12 @@ function handleEvent(e) {
     case 'trap': FX.log(`${seatName(e.to)} got a +${e.v}% trap.`); break;
     case 'shield': FX.log(`${seatName(e.to)} raised a −${e.v}% shield.`); break;
     case 'pierceBlade': FX.log(`${seatName(e.to)} gained +30 pierce (next hit).`); break;
-    case 'outAura': FX.log(`${seatName(e.to)} got −${e.v}% outgoing aura.`); break;
-    case 'brace': FX.log(`${seatName(e.to)} gained −${e.v}% brace.`); break;
-    case 'expose': FX.log(`${seatName(e.to)} is exposed: +${e.v}% incoming damage aura.`); break;
-    case 'wAura': FX.log(`${seatName(e.to)} got a −${e.v}% weakness aura.`); break;
+    case 'outAura': FX.log(`${seatName(e.to)} got −${e.v}% outgoing aura.${replNote(e)}`); break;
+    case 'brace': FX.log(`${seatName(e.to)} gained −${e.v}% brace.${replNote(e)}`); break;
+    case 'expose': FX.log(`${seatName(e.to)} is exposed: +${e.v}% incoming damage aura.${replNote(e)}`); break;
+    case 'wAura': FX.log(`${seatName(e.to)} got a −${e.v}% weakness aura.${replNote(e)}`); break;
     case 'bubble': FX.log(`${seatName(e.seat)} set the bubble (+${RULES.bubblePct}% their spells).`); break;
-    case 'outBuff': FX.log(`${seatName(e.to)} gained +${e.v}% outgoing aura.`); break;
+    case 'outBuff': FX.log(`${seatName(e.to)} gained +${e.v}% outgoing aura.${replNote(e)}`); break;
     case 'dot': FX.log(`${seatName(e.to)} is burning (${e.tick}/turn × ${e.rounds}).`); break;
     case 'hot': FX.log(`${seatName(e.to)} is regenerating (${e.heal}/turn × ${e.rounds}).`); break;
     case 'sacrifice': FX.float(panel(e.to), `−${e.hp}`, 'dmg'); FX.log(`${seatName(e.to)} sacrificed ${e.hp} HP for +${e.pips} pips.`); break;

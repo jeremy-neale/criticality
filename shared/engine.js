@@ -17,10 +17,10 @@ function newPlayer(deck) {
     shields: [],         // queue of -50% shields; each damage instance uses one
     traps: [],           // queue of +% traps on this player; each damage instance taken uses one
     weakness: null,      // -% on next outgoing hit (whole hit incl. DoT), then consumed
-    outAura: null,       // {v, rounds} -% outgoing damage debuff on this player
-    wAura: null,         // {v, rounds} -% outgoing weakness aura on this player
-    inAura: null,        // {v, rounds} signed incoming-damage aura: -v = brace, +v = exposed
-    outBuff: null,       // {v, rounds} +% outgoing damage
+    aura: null,          // ONE aura slot per player: {kind, v, rounds}. A new aura
+                         // replaces whatever is there. kind: 'outBuff' (+% outgoing),
+                         // 'outDebuff' (-% outgoing), 'weakAura' (-% outgoing weakness),
+                         // 'inAura' (signed incoming: -v = brace, +v = exposed)
     dots: [],            // [{tick, attMult, rounds}] damage over time on this player
     hots: [],            // [{heal, rounds}] healing over time on this player
     dotWard: 0,          // rounds of immunity to gaining new DoTs (from purify)
@@ -50,30 +50,50 @@ export function createMatch(decks, firstSeat, p2Bonus = RULES.pipStart[1] - RULE
   return { state, events };
 }
 
+// One aura slot per player: applying a new aura replaces the old one.
+// Returns the replaced aura (or null) so callers can report it.
+function setAura(p, kind, v) {
+  const old = p.aura;
+  p.aura = { kind, v, rounds: RULES.auraRounds };
+  return old;
+}
+
 function attackerMult(p, bubbleFor) {
   let m = 1 + RULES.dmgBonus + p.blades.reduce((a, b) => a + b, 0) / 100;
-  if (p.outBuff) m *= 1 + p.outBuff.v / 100;
-  if (bubbleFor) m *= 1 + RULES.bubblePct / 100;
-  if (p.weakness) m *= 1 - p.weakness / 100;
-  if (p.outAura) m *= 1 - p.outAura.v / 100;
-  if (p.wAura) m *= 1 - p.wAura.v / 100;
-  return m;
+  // Ordered list of the visible modifiers, for the card-play showcase.
+  // side 'up' = damage increased (card grows), 'down' = decreased (shrinks).
+  const mods = [];
+  if (p.blades.length) {
+    const x = 1 + p.blades.reduce((a, b) => a + b, 0) / 100;
+    mods.push({ label: p.blades.length > 1 ? 'blades' : 'blade', mult: x, side: 'up' });
+  }
+  const A = p.aura;
+  if (A && A.kind === 'outBuff') { const x = 1 + A.v / 100; m *= x; mods.push({ label: 'aura', mult: x, side: 'up' }); }
+  if (bubbleFor) { const x = 1 + RULES.bubblePct / 100; m *= x; mods.push({ label: 'bubble', mult: x, side: 'up' }); }
+  if (p.weakness) { const x = 1 - p.weakness / 100; m *= x; mods.push({ label: 'weakness', mult: x, side: 'down' }); }
+  if (A && A.kind === 'outDebuff') { const x = 1 - A.v / 100; m *= x; mods.push({ label: 'aura', mult: x, side: 'down' }); }
+  if (A && A.kind === 'weakAura') { const x = 1 - A.v / 100; m *= x; mods.push({ label: 'wither', mult: x, side: 'down' }); }
+  return { m, mods };
 }
 
 // Defender-side multiplier for one damage instance. Consumes one shield if present.
 function defenderMult(d, piercePct) {
+  const mods = [];
   let m = 1 - Math.max(0, RULES.resist - piercePct / 100);
   let shieldUsed = null;
   if (d.shields.length) {
     shieldUsed = d.shields.shift();
-    m *= 1 - Math.max(0, shieldUsed / 100 - piercePct / 100);
+    const x = 1 - Math.max(0, shieldUsed / 100 - piercePct / 100);
+    m *= x;
+    mods.push({ label: 'shield', mult: x, side: 'down' });
   }
-  if (d.inAura) {
+  const A = d.aura;
+  if (A && A.kind === 'inAura') {
     // negative = brace (pierceable); positive = exposed (not pierceable)
-    if (d.inAura.v < 0) m *= 1 - Math.max(0, -d.inAura.v / 100 - piercePct / 100);
-    else m *= 1 + d.inAura.v / 100;
+    if (A.v < 0) { const x = 1 - Math.max(0, -A.v / 100 - piercePct / 100); m *= x; mods.push({ label: 'brace', mult: x, side: 'down' }); }
+    else { const x = 1 + A.v / 100; m *= x; mods.push({ label: 'exposed', mult: x, side: 'up' }); }
   }
-  return { m, shieldUsed };
+  return { m, shieldUsed, mods };
 }
 
 function consumeAttackerMods(p) {
@@ -85,24 +105,26 @@ function consumeAttackerMods(p) {
 // Target-side trap multiplier for one damage instance. Consumes one trap if present.
 function trapMult(d) {
   let m = 1, trapUsed = null;
+  const mods = [];
   if (d.traps.length) {
     trapUsed = d.traps.shift();
     m += trapUsed / 100;
+    mods.push({ label: 'trap', mult: m, side: 'up' });
   }
-  return { m, trapUsed };
+  return { m, trapUsed, mods };
 }
 
 // Full hit: returns {dmg, attMult} and applies damage.
 function strike(state, ai, di, base, events) {
   const att = state.players[ai], def = state.players[di];
   const pierce = RULES.basePierce + (att.pierceBlade ? 30 : 0);
-  const am = attackerMult(att, state.bubble && state.bubble.owner === ai);
-  const { m: dm, shieldUsed } = defenderMult(def, pierce);
-  const { m: tm, trapUsed } = trapMult(def);
+  const { m: am, mods: amods } = attackerMult(att, state.bubble && state.bubble.owner === ai);
+  const { m: dm, shieldUsed, mods: dmods } = defenderMult(def, pierce);
+  const { m: tm, trapUsed, mods: tmods } = trapMult(def);
   const dmg = Math.max(0, Math.round(base * am * dm * tm));
   consumeAttackerMods(att);
   def.hp = Math.max(0, def.hp - dmg);
-  events.push({ k: 'dmg', to: di, from: ai, amount: dmg, shieldUsed, trapUsed });
+  events.push({ k: 'dmg', to: di, from: ai, amount: dmg, shieldUsed, trapUsed, mods: [...amods, ...dmods, ...tmods] });
   checkDeath(state, events);
   return { dmg, attMult: am };
 }
@@ -128,10 +150,8 @@ function drawCard(p, events, si) {
 }
 
 function tickAuras(p) {
-  for (const key of ['inAura', 'wAura', 'outBuff', 'outAura']) {
-    const a = p[key];
-    if (a && --a.rounds <= 0) p[key] = null;
-  }
+  const a = p.aura;
+  if (a && --a.rounds <= 0) p.aura = null;
 }
 
 function startTurn(state, events) {
@@ -158,11 +178,11 @@ function startTurn(state, events) {
   // DoT ticks hit into your CURRENT defenses (resist, incoming aura, one shield each)
   // and consume one trap each if any are on you.
   for (const d of p.dots) {
-    const { m: dm, shieldUsed } = defenderMult(p, RULES.basePierce);
-    const { m: tm, trapUsed } = trapMult(p);
+    const { m: dm, shieldUsed, mods: dmods } = defenderMult(p, RULES.basePierce);
+    const { m: tm, trapUsed, mods: tmods } = trapMult(p);
     const dmg = Math.max(0, Math.round(d.tick * d.attMult * dm * tm));
     p.hp = Math.max(0, p.hp - dmg);
-    events.push({ k: 'dmg', to: si, from: 1 - si, amount: dmg, shieldUsed, trapUsed, dot: true });
+    events.push({ k: 'dmg', to: si, from: 1 - si, amount: dmg, shieldUsed, trapUsed, dot: true, mods: [...dmods, ...tmods] });
     d.rounds--;
     checkDeath(state, events);
     if (state.winner) return;
@@ -246,9 +266,9 @@ export function applyAction(state, si, action) {
         // NOTE: blades from the hit itself apply AFTER the hit (next damaging hit).
         if (card.weakness) { foe.weakness = card.weakness; events.push({ k: 'weak', to: 1 - si, v: card.weakness }); }
         if (card.trap) { foe.traps.push(card.trap); events.push({ k: 'trap', to: 1 - si, v: card.trap }); }
-        if (card.outAura) { foe.outAura = { v: card.outAura, rounds: RULES.auraRounds }; events.push({ k: 'outAura', to: 1 - si, v: card.outAura }); }
-        if (card.brace) { me.inAura = { v: -card.brace, rounds: RULES.auraRounds }; events.push({ k: 'brace', to: si, v: card.brace }); }
-        if (card.wAura) { foe.wAura = { v: card.wAura, rounds: RULES.auraRounds }; events.push({ k: 'wAura', to: 1 - si, v: card.wAura }); }
+        if (card.outAura) { const old = setAura(foe, 'outDebuff', card.outAura); events.push({ k: 'outAura', to: 1 - si, v: card.outAura, replaced: old ? old.kind : null }); }
+        if (card.brace) { const old = setAura(me, 'inAura', -card.brace); events.push({ k: 'brace', to: si, v: card.brace, replaced: old ? old.kind : null }); }
+        if (card.wAura) { const old = setAura(foe, 'weakAura', card.wAura); events.push({ k: 'wAura', to: 1 - si, v: card.wAura, replaced: old ? old.kind : null }); }
         if (card.bubble) { state.bubble = { owner: si }; events.push({ k: 'bubble', seat: si }); }
         break;
       }
@@ -287,19 +307,22 @@ export function applyAction(state, si, action) {
         me.pierceBlade = true;
         events.push({ k: 'pierceBlade', to: si });
         break;
-      case 'aura':
-        me.outBuff = { v: card.outBuff, rounds: RULES.auraRounds };
-        events.push({ k: 'outBuff', to: si, v: card.outBuff });
+      case 'aura': {
+        const old = setAura(me, 'outBuff', card.outBuff);
+        events.push({ k: 'outBuff', to: si, v: card.outBuff, replaced: old ? old.kind : null });
         break;
-      case 'expose':
-        // overwrites brace (same incoming-aura slot)
-        foe.inAura = { v: card.inAura, rounds: RULES.auraRounds };
-        events.push({ k: 'expose', to: 1 - si, v: card.inAura });
+      }
+      case 'expose': {
+        // one aura slot: replaces whatever aura the target had
+        const old = setAura(foe, 'inAura', card.inAura);
+        events.push({ k: 'expose', to: 1 - si, v: card.inAura, replaced: old ? old.kind : null });
         break;
-      case 'waura':
-        foe.wAura = { v: card.wAura, rounds: RULES.auraRounds };
-        events.push({ k: 'wAura', to: 1 - si, v: card.wAura });
+      }
+      case 'waura': {
+        const old = setAura(foe, 'weakAura', card.wAura);
+        events.push({ k: 'wAura', to: 1 - si, v: card.wAura, replaced: old ? old.kind : null });
         break;
+      }
       case 'bubble':
         state.bubble = { owner: si };
         events.push({ k: 'bubble', seat: si });
@@ -352,10 +375,7 @@ export function snapshot(state, seatIdx) {
     shields: p.shields.length,
     traps: [...p.traps],
     weakness: p.weakness,
-    outAura: p.outAura ? { ...p.outAura } : null,
-    wAura: p.wAura ? { ...p.wAura } : null,
-    inAura: p.inAura ? { ...p.inAura } : null,
-    outBuff: p.outBuff ? { ...p.outBuff } : null,
+    aura: p.aura ? { ...p.aura } : null,
     dots: p.dots.map(d => ({ tick: Math.round(d.tick * d.attMult), rounds: d.rounds })),
     hots: p.hots.map(h => ({ ...h })),
   });

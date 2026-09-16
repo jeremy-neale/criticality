@@ -151,6 +151,10 @@ export const SFX = {
   // Turn timer running down (last 5s).
   tick() { this.stats.tick++; this._tone({ f: 1050, type: 'square', dur: 0.035, vol: 0.055 }); },
 
+  // Buff-sequence blips during the card showcase: rising for damage-up, falling for damage-down.
+  buffUp() { this._tone({ f: 520, f1: 780, type: 'sine', dur: 0.09, vol: 0.12 }); },
+  buffDown() { this._tone({ f: 520, f1: 340, type: 'sine', dur: 0.09, vol: 0.12 }); },
+
   /* ---- background music ---- */
 
   _ensureMusic() {

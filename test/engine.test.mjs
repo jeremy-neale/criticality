@@ -249,9 +249,11 @@ describe('incoming auras, weakness aura, bubble', () => {
   it('expose overwrites brace: +20% incoming', () => {
     const { state } = createMatch([deckOf(), deckOf()], 0);
     give(state, 0, 'sunder'); playByName(state, 0, 'sunder'); // self brace
-    assert.equal(state.players[0].inAura.v, -20);
+    assert.equal(state.players[0].aura.kind, 'inAura');
+    assert.equal(state.players[0].aura.v, -20);
     give(state, 1, 'expose'); playByName(state, 1, 'expose'); // overwrites brace
-    assert.equal(state.players[0].inAura.v, 20);
+    assert.equal(state.players[0].aura.kind, 'inAura');
+    assert.equal(state.players[0].aura.v, 20);
     pass(state, 0);
     give(state, 1, 'spark'); playByName(state, 1, 'spark'); // 210*2.5*0.8*1.2 = 504
     assert.equal(state.players[0].hp, 10000 - 504);
@@ -265,9 +267,40 @@ describe('incoming auras, weakness aura, bubble', () => {
   it('wither: -15% weakness aura on enemy outgoing', () => {
     const { state } = createMatch([deckOf(), deckOf()], 0);
     give(state, 0, 'wither'); playByName(state, 0, 'wither');
-    assert.equal(state.players[1].wAura.v, 15);
+    assert.equal(state.players[1].aura.kind, 'weakAura');
+    assert.equal(state.players[1].aura.v, 15);
     give(state, 1, 'spark'); playByName(state, 1, 'spark'); // 210*2.5*0.8*0.85 = 357
     assert.equal(state.players[0].hp, 10000 - 357);
+  });
+  it('one aura slot: wither replaces battle aura on the foe', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    pass(state, 0);
+    give(state, 1, 'aura'); playByName(state, 1, 'aura'); // foe gains +25% outBuff
+    assert.equal(state.players[1].aura.kind, 'outBuff');
+    give(state, 0, 'wither'); playByName(state, 0, 'wither'); // replaces it
+    assert.equal(state.players[1].aura.kind, 'weakAura');
+    assert.equal(state.players[1].aura.v, 15);
+    give(state, 1, 'spark'); playByName(state, 1, 'spark'); // 210*2.5*0.8*0.85 = 357 (no more +25%)
+    assert.equal(state.players[0].hp, 10000 - 357);
+  });
+  it('one aura slot: battle aura replaces an outgoing debuff', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    give(state, 0, 'lash'); playByName(state, 0, 'lash'); // foe gets -20% outgoing debuff
+    assert.equal(state.players[1].aura.kind, 'outDebuff');
+    give(state, 1, 'aura'); playByName(state, 1, 'aura'); // foe overwrites with +25%
+    assert.equal(state.players[1].aura.kind, 'outBuff');
+    pass(state, 0);
+    give(state, 1, 'spark'); playByName(state, 1, 'spark'); // 210*2.5*0.8*1.25 = 525
+    assert.equal(state.players[0].hp, 10000 - 525);
+  });
+  it('aura events report what was replaced', () => {
+    const { state } = createMatch([deckOf(), deckOf()], 0);
+    pass(state, 0);
+    give(state, 1, 'aura'); playByName(state, 1, 'aura');
+    give(state, 0, 'wither');
+    const { events } = applyAction(state, 0, { type: 'play', hand: state.players[0].hand.indexOf('wither') });
+    const w = events.find(e => e.k === 'wAura');
+    assert.equal(w.replaced, 'outBuff');
   });
   it('bubble: +25% for the setter, nothing for the other side', () => {
     const { state } = createMatch([deckOf(), deckOf()], 0);
