@@ -79,7 +79,7 @@ const FX = {
     el.style.left = cx + 'px';
     el.style.top = (cy - 96 - i * 24) + 'px';
     layer.appendChild(el);
-    setTimeout(() => el.remove(), 1050);
+    setTimeout(() => el.remove(), 2200);
   },
   playCard(cardId, side) {
     const layer = $('fx-layer');
@@ -120,9 +120,9 @@ const FX = {
             { transform: at(cx, cy, scale) },
           ], { duration: 190, easing: 'ease-out', fill: 'forwards' });
           if (m.side === 'up') SFX.buffUp(); else SFX.buffDown();
-        }, 240 + i * 210);
+        }, 300 + i * 550);
       });
-      const showDur = Math.max(620, 300 + mods.length * 210);
+      const showDur = Math.max(900, 400 + mods.length * 550);
       setTimeout(() => {
         // Slam: punch down, then dissolve upward into themed particles.
         el.animate([
@@ -651,16 +651,17 @@ function renderDuel(events) {
   $('deck-next').textContent = snap.you.deckNext && snap.you.deckNext.length
     ? 'Next: ' + CARDS[snap.you.deckNext[0]].name : 'Next: —';
 
-  // bubble flame on the holder's orb (replaces the old text bar)
+  // bubble battlefield tint: the arena takes the holder's color (P1 blue, P2 red)
   const bubOwner = snap.bubble ? snap.bubble.owner : null;
-  for (const [pfx, who] of [['foe', 'foe'], ['you', 'you']]) {
-    const fl = $(pfx + '-flame');
-    if (fl) {
-      const on = bubOwner === who;
-      fl.classList.toggle('hidden', !on);
-      fl.title = on ? `Bubble: +${RULES.bubblePct}% ${who === 'you' ? 'your' : "foe's"} spells` : '';
-    }
-  }
+  const bubIdx = bubOwner === null ? null : (bubOwner === 'you' ? myMatchIdx() : 1 - myMatchIdx());
+  const duel = $('screen-duel');
+  duel.classList.toggle('bub-p1', bubIdx === 0);
+  duel.classList.toggle('bub-p2', bubIdx === 1);
+  // player name colors: P1 blue, P2 red, so the tint always reads clearly
+  const youCls = myMatchIdx() === 0 ? 'p1' : 'p2';
+  const foeCls = myMatchIdx() === 0 ? 'p2' : 'p1';
+  $('you-name').className = 'char-name ' + youCls;
+  $('foe-name').className = 'char-name ' + foeCls;
 
   const mine = isMyTurn();
   $('turn-banner').textContent = snap.winner ? '' : (mine ? 'YOUR TURN' : "Opponent's turn");
